@@ -8,8 +8,9 @@
 ## Архитектура
 
 ```
-frontend/   React 19 + TypeScript + Vite + Tailwind — чат-ассистент,
-            каталог документов, карточки документов
+frontend/   React 19 + TypeScript + Vite + MUI — FSD-структура
+            (app/pages/widgets/features/entities/shared), чат-ассистент,
+            каталог документов, админ-раздел
 backend/    Go (stdlib) — REST API документов/сотрудников, прокси /api/ask,
             синхронизация индекса с ML-сервисом
 ml/         Go (stdlib) — RAG: чанкинг, эмбеддинги, векторный+лексический
