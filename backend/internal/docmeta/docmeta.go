@@ -185,3 +185,48 @@ func findDate(s string) *time.Time {
 	}
 	return nil
 }
+
+// Folders are thematic groups of the knowledge base; an administrator can
+// move a document to another folder later.
+var folderRules = []struct {
+	name string
+	re   *regexp.Regexp
+}{
+	{"Формы и бланки", regexp.MustCompile(`(?i)(бланк|^копия приложение|^приложение 1)`)},
+	{"Финансы проектов", regexp.MustCompile(`(?i)(флс|лицев|смет|заимств)`)},
+	{"Бюджет и финансовая структура", regexp.MustCompile(`(?i)(бюджет|фин\.? ?структур|(?:^|[\s«])эб(?:$|[\s»]))`)},
+	{"Кадры и командировки", regexp.MustCompile(`(?i)(подбор|персонал|командир|кадр)`)},
+	{"ИТ и инфраструктура", regexp.MustCompile(`(?i)(техподдерж|технической поддерж|обработки данных|цод|информационн)`)},
+	{"Кампус и мероприятия", regexp.MustCompile(`(?i)(поселени|общежит|зал|мероприят)`)},
+}
+
+// SuggestFolder picks a thematic folder from the document title.
+func SuggestFolder(title string) string {
+	for _, r := range folderRules {
+		if r.re.MatchString(title) {
+			return r.name
+		}
+	}
+	return "Прочие документы"
+}
+
+// RefineFolder is applied after parsing: when the title gave no folder, the
+// document header text decides (forms are recognised by title only).
+func RefineFolder(current, title, text string) string {
+	if current != "" && current != "Прочие документы" {
+		return current
+	}
+	if f := SuggestFolder(title); f != "Прочие документы" {
+		return f
+	}
+	head := text
+	if r := []rune(head); len(r) > 1500 {
+		head = string(r[:1500])
+	}
+	for _, r := range folderRules[1:] {
+		if r.re.MatchString(head) {
+			return r.name
+		}
+	}
+	return "Прочие документы"
+}

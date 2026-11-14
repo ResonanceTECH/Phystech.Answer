@@ -29,6 +29,7 @@ type Store interface {
 	// SetVersionContent replaces version content and rebuilds sections+chunks.
 	SetVersionContent(ctx context.Context, versionID, content string) error
 	UpdateDocumentMeta(ctx context.Context, id, number, docType string, date *time.Time) error
+	SetDocumentFolder(ctx context.Context, id, folder string) error
 	SetVersionStatus(ctx context.Context, versionID, processingStatus, processingError string) error
 
 	// Source files.
@@ -98,6 +99,28 @@ type Store interface {
 
 	// Lookup for relation auto-detection: finds a document by its number.
 	FindDocumentByNumber(ctx context.Context, number string) (model.Document, error)
+
+	// Onboarding: folders/visibility, departments, user organisation,
+	// assignments, plans, notifications (onboarding.go).
+	UpdateDocumentAdmin(ctx context.Context, id string, title, folder, visibility *string) error
+	ListDepartments(ctx context.Context) ([]model.Department, error)
+	CreateDepartment(ctx context.Context, name string) (model.Department, error)
+	RenameDepartment(ctx context.Context, id, name string) error
+	DeleteDepartment(ctx context.Context, id string) error
+	DepartmentByName(ctx context.Context, name string) (model.Department, error)
+	ListUserProfiles(ctx context.Context) ([]model.UserProfile, error)
+	GetUserProfile(ctx context.Context, id string) (model.UserProfile, error)
+	UpdateUserOrg(ctx context.Context, id string, role, departmentID, position *string, active *bool) error
+	IsUserActive(ctx context.Context, id string) (bool, error)
+	ListAssignments(ctx context.Context, documentID, targetType, targetID string) ([]model.Assignment, error)
+	UpsertAssignment(ctx context.Context, a model.Assignment) (model.Assignment, bool, error)
+	DeleteAssignment(ctx context.Context, id string) error
+	CountAssignments(ctx context.Context) (int, error)
+	UsersForTarget(ctx context.Context, targetType, targetID string) ([]string, error)
+	PlanFor(ctx context.Context, userID string) ([]model.PlanItem, error)
+	CreateNotifications(ctx context.Context, userIDs []string, kind, documentID, title, body string) error
+	ListNotifications(ctx context.Context, userID string, limit int) ([]model.Notification, int, error)
+	MarkNotificationsRead(ctx context.Context, userID, id string) error
 
 	// Audit.
 	AddAuditLog(ctx context.Context, userID, entity, entityID, action, reason string, oldVal, newVal any) error

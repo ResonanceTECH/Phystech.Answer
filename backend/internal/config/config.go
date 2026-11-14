@@ -15,6 +15,8 @@ type Config struct {
 	MLTimeoutSec int
 	SeedDemoData bool
 	DocsDir      string
+	// SeedOnboarding: demo departments' document assignments (default on).
+	SeedOnboarding bool
 
 	DatabaseURL string
 	DBMaxConns  int32
@@ -35,6 +37,7 @@ func Load() Config {
 		MLTimeoutSec:      getEnvInt("ML_TIMEOUT_SECONDS", 120),
 		SeedDemoData:      getEnv("SEED_DEMO_DATA", "false") == "true",
 		DocsDir:           getEnv("DOCS_DIR", ""),
+		SeedOnboarding:    getEnv("SEED_ONBOARDING", "true") != "false",
 		DatabaseURL:       getEnv("DATABASE_URL", ""),
 		DBMaxConns:        int32(getEnvInt("DB_MAX_CONNS", 10)),
 		StorageDriver:     getEnv("STORAGE_DRIVER", "local"),

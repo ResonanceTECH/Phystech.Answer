@@ -20,8 +20,11 @@ type Document struct {
 	AccessLevel    string     `json:"accessLevel,omitempty"`
 	LegalStatus    string     `json:"legalStatus,omitempty"`
 	Processing     string     `json:"processingStatus,omitempty"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
+	// Visibility: active | hidden | archived. Hidden and archived documents
+	// are excluded from the assistant and from employees' lists.
+	Visibility string    `json:"visibility,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 	// SourceFileID links the initial version to an uploaded file (input-only).
 	SourceFileID string `json:"-"`
 }
@@ -230,4 +233,59 @@ type Job struct {
 	IdempotencyKey    string          `json:"idempotencyKey,omitempty"`
 	CreatedAt         time.Time       `json:"createdAt"`
 	CompletedAt       *time.Time      `json:"completedAt,omitempty"`
+}
+
+// ---------- onboarding: departments, assignments, notifications ----------
+
+type Department struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Members   int       `json:"members"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// UserProfile is a user with organisational data (admin views).
+type UserProfile struct {
+	User
+	DepartmentID   string `json:"departmentId,omitempty"`
+	DepartmentName string `json:"departmentName,omitempty"`
+	Position       string `json:"position,omitempty"`
+	Active         bool   `json:"active"`
+	// Progress over required documents (filled by the API).
+	RequiredTotal int `json:"requiredTotal"`
+	RequiredRead  int `json:"requiredRead"`
+	OptionalTotal int `json:"optionalTotal"`
+	OptionalRead  int `json:"optionalRead"`
+}
+
+// Assignment targets: all employees, a department or one user.
+type Assignment struct {
+	ID          string     `json:"id"`
+	DocumentID  string     `json:"documentId"`
+	TargetType  string     `json:"targetType"` // all|department|user
+	TargetID    string     `json:"targetId,omitempty"`
+	TargetName  string     `json:"targetName,omitempty"`
+	Requirement string     `json:"requirement"` // required|optional
+	DueDate     *time.Time `json:"dueDate,omitempty"`
+	AssignedBy  string     `json:"assignedBy,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+}
+
+// PlanItem is one document in an employee's onboarding plan.
+type PlanItem struct {
+	DocumentID  string     `json:"documentId"`
+	Requirement string     `json:"requirement"` // required|optional|library
+	Source      string     `json:"source"`      // all|department|user|library
+	DueDate     *time.Time `json:"dueDate,omitempty"`
+	AssignedAt  *time.Time `json:"assignedAt,omitempty"`
+}
+
+type Notification struct {
+	ID         string     `json:"id"`
+	Kind       string     `json:"kind"` // assigned|new_document|updated
+	DocumentID string     `json:"documentId,omitempty"`
+	Title      string     `json:"title"`
+	Body       string     `json:"body,omitempty"`
+	ReadAt     *time.Time `json:"readAt,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"`
 }

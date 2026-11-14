@@ -108,6 +108,22 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/document-relations/{id}/verify", s.verifyRelation)
 	mux.HandleFunc("GET /api/v1/admin/dashboard", s.dashboard)
 
+	// Онбординг: документы (папки/видимость), отделы, участники, назначения.
+	mux.HandleFunc("PATCH /api/v1/admin/documents/{id}", s.patchDocument)
+	mux.HandleFunc("GET /api/v1/departments", s.listDepartments)
+	mux.HandleFunc("POST /api/v1/admin/departments", s.createDepartment)
+	mux.HandleFunc("PATCH /api/v1/admin/departments/{id}", s.renameDepartment)
+	mux.HandleFunc("DELETE /api/v1/admin/departments/{id}", s.deleteDepartment)
+	mux.HandleFunc("GET /api/v1/admin/users", s.listParticipants)
+	mux.HandleFunc("POST /api/v1/admin/users", s.createParticipant)
+	mux.HandleFunc("PATCH /api/v1/admin/users/{id}", s.patchParticipant)
+	mux.HandleFunc("GET /api/v1/admin/assignments", s.listAssignments)
+	mux.HandleFunc("POST /api/v1/admin/assignments", s.createAssignments)
+	mux.HandleFunc("DELETE /api/v1/admin/assignments/{id}", s.deleteAssignment)
+	mux.HandleFunc("GET /api/v1/me/plan", s.myPlan)
+	mux.HandleFunc("GET /api/v1/notifications", s.listNotifications)
+	mux.HandleFunc("POST /api/v1/notifications/read", s.readNotifications)
+
 	// Legacy unversioned API kept for the existing frontend.
 	mux.HandleFunc("GET /api/documents", s.listDocuments)
 	mux.HandleFunc("POST /api/documents", s.createDocument)

@@ -88,6 +88,7 @@ func (s *Server) processUpload(r *http.Request, user model.User, filename string
 type ingestOptions struct {
 	Title, Category, DocType, DocNumber string
 	Tags                                []string
+	Visibility                          string // "" = active; "hidden" — до проверки
 }
 
 // ingestFile stores a file, creates the document card and enqueues parsing.
@@ -151,7 +152,8 @@ func (s *Server) ingestFile(ctx context.Context, uploaderID, filename string, da
 		DocumentNumber: firstNonEmpty(opt.DocNumber, meta.Number),
 		DocumentType:   firstNonEmpty(opt.DocType, meta.Type),
 		DocumentDate:   meta.Date,
-		Category:       opt.Category,
+		Category:       firstNonEmpty(opt.Category, docmeta.SuggestFolder(title)),
+		Visibility:     opt.Visibility,
 		Tags:           opt.Tags,
 		SourceFileID:   fileRec.ID,
 	})

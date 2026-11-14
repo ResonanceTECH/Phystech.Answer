@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"regexp"
@@ -189,6 +190,11 @@ func (r *Runner) handleDocumentParse(ctx context.Context, j model.Job) error {
 		if err := r.st.UpdateDocumentMeta(ctx, p.DocumentID, meta.Number, meta.Type, meta.Date); err != nil {
 			log.Printf("jobs: meta %s: %v", p.DocumentID, err)
 		}
+		if f := docmeta.RefineFolder(cur.Category, cur.Title, text); f != cur.Category {
+			if err := r.st.SetDocumentFolder(ctx, p.DocumentID, f); err != nil {
+				log.Printf("jobs: folder %s: %v", p.DocumentID, err)
+			}
+		}
 	}
 	// Index in ML before publishing: "published" in the UI means the
 	// document is already searchable by the assistant.
@@ -202,7 +208,32 @@ func (r *Runner) handleDocumentParse(ctx context.Context, j model.Job) error {
 		}
 	}
 	r.detectRelations(ctx, p.VersionID, text)
-	return r.st.SetVersionStatus(ctx, p.VersionID, "published", "")
+	if err := r.st.SetVersionStatus(ctx, p.VersionID, "published", ""); err != nil {
+		return err
+	}
+	r.notifyPublished(ctx, p)
+	return nil
+}
+
+// notifyPublished: a document uploaded by an administrator (not the startup
+// import) and visible to employees is announced to all active employees.
+func (r *Runner) notifyPublished(ctx context.Context, p DocumentParsePayload) {
+	f, err := r.st.GetSourceFile(ctx, p.FileID)
+	if err != nil || f.UploadedBy == "" {
+		return
+	}
+	doc, err := r.st.GetDocument(ctx, p.DocumentID)
+	if err != nil || (doc.Visibility != "" && doc.Visibility != "active") {
+		return
+	}
+	users, err := r.st.UsersForTarget(ctx, "all", "")
+	if err != nil || len(users) == 0 {
+		return
+	}
+	if err := r.st.CreateNotifications(ctx, users, "new_document", doc.ID,
+		"На платформе новый документ", fmt.Sprintf("«%s» добавлен в базу знаний.", doc.Title)); err != nil {
+		log.Printf("jobs: notify %s: %v", doc.ID, err)
+	}
 }
 
 // ---------- нормативные связи (спека §11) ----------

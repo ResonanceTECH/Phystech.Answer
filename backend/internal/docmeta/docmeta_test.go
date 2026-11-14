@@ -41,3 +41,30 @@ func TestEnrichIgnoresLawReferences(t *testing.T) {
 		t.Fatalf("EDO requisites not found: %q", m.Number)
 	}
 }
+
+func TestSuggestFolder(t *testing.T) {
+	cases := map[string]string{
+		"Регламент бронирования конц зала":                               "Кампус и мероприятия",
+		"Приказ N 794-1 от 28.03.2023":                                   "Прочие документы",
+		"Распоряжение N 700 от 28.12.2024 Порядок присвоения номера ФЛС": "Финансы проектов",
+		"Приказ и регламент по ЭБ":                                       "Бюджет и финансовая структура",
+		"Приложение 1а Бланк сметы":                                      "Формы и бланки",
+		"Приказ и Регламент работы первой линии техподдержки":            "ИТ и инфраструктура",
+		"Регламент о командировании":                                     "Кадры и командировки",
+	}
+	for title, want := range cases {
+		if got := SuggestFolder(title); got != want {
+			t.Errorf("%s: got %q want %q", title, got, want)
+		}
+	}
+}
+
+func TestRefineFolderUsesText(t *testing.T) {
+	got := RefineFolder("Прочие документы", "Приказ N 794-1 от 28.03.2023", "ПРИКАЗ\nОб утверждении порядка формирования и утверждения смет доходов и расходов")
+	if got != "Финансы проектов" {
+		t.Fatalf("got %q", got)
+	}
+	if RefineFolder("Кадры и командировки", "x", "смет") != "Кадры и командировки" {
+		t.Fatal("explicit folder must be kept")
+	}
+}

@@ -41,8 +41,16 @@ func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Скрытые и архивные документы видят только администраторы.
+	isAdmin := false
+	if u, ok := s.currentUser(r); ok && (u.Role == "admin" || u.Role == "expert") {
+		isAdmin = true
+	}
 	resp := make([]documentResponse, 0, len(docs))
 	for _, d := range docs {
+		if !isAdmin && d.Visibility != "" && d.Visibility != "active" {
+			continue
+		}
 		if brief {
 			d.Content = "" // catalog/onboarding lists don't need full texts
 		}
@@ -91,6 +99,11 @@ func (s *Server) createDocument(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getDocument(w http.ResponseWriter, r *http.Request) {
 	doc, err := s.store.GetDocument(r.Context(), r.PathValue("id"))
+	if err == nil && doc.Visibility != "" && doc.Visibility != "active" {
+		if u, ok := s.currentUser(r); !ok || (u.Role != "admin" && u.Role != "expert") {
+			err = store.ErrNotFound
+		}
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "document not found")
 		return

@@ -38,6 +38,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if active, err := s.store.IsUserActive(r.Context(), user.ID); err == nil && !active {
+		writeError(w, http.StatusForbidden, "account is deactivated")
+		return
+	}
 	sessionID, err := s.store.CreateSession(r.Context(), user.ID, s.sessionTTL)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create session")

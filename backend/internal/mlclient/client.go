@@ -125,6 +125,9 @@ func (c *Client) IndexDocument(ctx context.Context, doc model.Document) error {
 	if !c.Enabled() {
 		return nil
 	}
+	if doc.Visibility != "" && doc.Visibility != "active" {
+		return c.RemoveDocument(ctx, doc.ID) // hidden documents are not searchable
+	}
 	code, err := c.do(ctx, http.MethodPut, "/api/documents/"+doc.ID, toMLDoc(doc), nil)
 	if err != nil {
 		return err
@@ -151,8 +154,8 @@ func (c *Client) SyncDocuments(ctx context.Context, docs []model.Document) error
 	}
 	out := make([]mlDoc, 0, len(docs))
 	for _, d := range docs {
-		if strings.TrimSpace(d.Content) == "" {
-			continue // not parsed yet / requires review
+		if strings.TrimSpace(d.Content) == "" || (d.Visibility != "" && d.Visibility != "active") {
+			continue // not parsed yet / requires review / hidden from the assistant
 		}
 		out = append(out, toMLDoc(d))
 	}

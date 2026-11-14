@@ -49,9 +49,15 @@ func main() {
 	// folder in the background: first-time embedding of the corpus can take
 	// minutes on CPU and must not block the API. Parsing of imported files
 	// runs in the job worker; each parsed document is indexed on completion.
+	store.SeedOrg(ctx, st)
 	go func() {
 		srv.SyncDocuments(ctx)
 		srv.ImportDirectory(ctx, cfg.DocsDir)
+		// Demo assignments need parsed documents (numbers/titles).
+		if cfg.SeedDemoData || cfg.SeedOnboarding {
+			srv.WaitForProcessing(ctx, 20*time.Minute)
+			store.SeedAssignments(ctx, st)
+		}
 	}()
 
 	// Background worker: document parsing, answer generation.

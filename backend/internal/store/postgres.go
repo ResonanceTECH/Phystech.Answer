@@ -39,7 +39,8 @@ const documentProjection = `
 SELECT d.id, d.title, d.document_number, d.document_type, d.category,
        d.document_date, d.access_level, d.tags, d.created_at, d.updated_at,
        COALESCE(v.version_number, 0), COALESCE(v.content, ''),
-       COALESCE(v.legal_status, ''), COALESCE(v.processing_status, '')
+       COALESCE(v.legal_status, ''), COALESCE(v.processing_status, ''),
+       d.visibility
 FROM documents d
 LEFT JOIN LATERAL (
     SELECT version_number, content, legal_status, processing_status
@@ -54,7 +55,7 @@ func scanDocument(row pgx.Row) (model.Document, error) {
 	var num, typ, cat, access, legal, proc *string
 	err := row.Scan(&d.ID, &d.Title, &num, &typ, &cat,
 		&d.DocumentDate, &access, &d.Tags, &d.CreatedAt, &d.UpdatedAt,
-		&d.Version, &d.Content, &legal, &proc)
+		&d.Version, &d.Content, &legal, &proc, &d.Visibility)
 	if err != nil {
 		return model.Document{}, err
 	}
@@ -118,10 +119,11 @@ func (p *Postgres) CreateDocument(ctx context.Context, doc model.Document) (mode
 		doc.Tags = []string{}
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO documents
-		(id, title, document_number, document_type, category, access_level, tags, created_at, updated_at, document_date)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		(id, title, document_number, document_type, category, access_level, tags, created_at, updated_at, document_date, visibility)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		doc.ID, doc.Title, doc.DocumentNumber, doc.DocumentType, doc.Category,
-		defaultStr(doc.AccessLevel, "internal"), doc.Tags, now, now, doc.DocumentDate)
+		defaultStr(doc.AccessLevel, "internal"), doc.Tags, now, now, doc.DocumentDate,
+		defaultStr(doc.Visibility, "active"))
 	if err != nil {
 		return model.Document{}, err
 	}

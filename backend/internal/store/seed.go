@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -344,4 +346,152 @@ func seedUser(ctx context.Context, st Store, u model.User, hash string) (model.U
 		return model.User{}, nil
 	}
 	return user, err
+}
+
+// ---------- onboarding demo: departments, people, assignments ----------
+
+var demoDepartments = []string{
+	"Научно-исследовательские подразделения",
+	"Финансово-экономическое управление",
+	"Управление информационных технологий",
+	"Отдел кадров",
+	"Культурно-массовый отдел",
+}
+
+type demoPerson struct {
+	name, login, password, role, dept, position string
+}
+
+var demoPeople = []demoPerson{
+	{"Иван Петров", "ivan", "ivan123", "employee", "Научно-исследовательские подразделения", "Руководитель проекта (новый сотрудник)"},
+	{"Мария Сидорова", "maria", "maria123", "employee", "Финансово-экономическое управление", "Экономист"},
+	{"Олег Смирнов", "oleg", "oleg123", "employee", "Управление информационных технологий", "Инженер первой линии поддержки"},
+	{"Анна Кузнецова", "anna", "anna123", "employee", "Отдел кадров", "Специалист по подбору персонала"},
+}
+
+// SeedOrg creates demo departments and attaches demo users to them. Runs
+// only when no departments exist, so admin changes are never overwritten.
+func SeedOrg(ctx context.Context, st Store) {
+	deps, err := st.ListDepartments(ctx)
+	if err != nil || len(deps) > 0 {
+		return
+	}
+	ids := map[string]string{}
+	for _, name := range demoDepartments {
+		d, err := st.CreateDepartment(ctx, name)
+		if err != nil {
+			log.Printf("seed: department %q: %v", name, err)
+			continue
+		}
+		ids[name] = d.ID
+	}
+	for _, p := range demoPeople {
+		u, _, err := st.GetUserByLogin(ctx, p.login)
+		if errors.Is(err, ErrNotFound) {
+			h, herr := bcrypt.GenerateFromPassword([]byte(p.password), bcrypt.DefaultCost)
+			if herr != nil {
+				continue
+			}
+			u, err = st.CreateUser(ctx, model.User{Name: p.name, Login: p.login, Email: p.login + "@example.com", Role: p.role}, string(h))
+		}
+		if err != nil {
+			log.Printf("seed: user %s: %v", p.login, err)
+			continue
+		}
+		dep, pos := ids[p.dept], p.position
+		if err := st.UpdateUserOrg(ctx, u.ID, nil, &dep, &pos, nil); err != nil {
+			log.Printf("seed: org %s: %v", p.login, err)
+		}
+	}
+	log.Printf("seed: %d departments, %d demo employees", len(ids), len(demoPeople))
+}
+
+// demoAssignment refers to a document by number or by a title fragment.
+type demoAssignment struct {
+	match       string
+	target      string // "all", department name or user login
+	requirement string
+	dueDays     int
+}
+
+var demoAssignments = []demoAssignment{
+	// Всем сотрудникам.
+	{"2993-1", "all", "required", 14},
+	{"1292-1", "all", "optional", 0},
+	{"поселения", "all", "optional", 0},
+	{"3897-1", "all", "optional", 0},
+	// Научные подразделения: проекты, ФЛС, сметы, заимствование, командировки.
+	{"3065-1", "Научно-исследовательские подразделения", "required", 30},
+	{"460-1", "Научно-исследовательские подразделения", "required", 30},
+	{"700", "Научно-исследовательские подразделения", "required", 30},
+	{"794-1", "Научно-исследовательские подразделения", "required", 30},
+	{"889-1", "Научно-исследовательские подразделения", "required", 30},
+	{"5990-1", "Научно-исследовательские подразделения", "required", 30},
+	{"командировании", "Научно-исследовательские подразделения", "required", 30},
+	{"3699-1", "Научно-исследовательские подразделения", "optional", 0},
+	// Финансово-экономическое управление.
+	{"794-1", "Финансово-экономическое управление", "required", 30},
+	{"889-1", "Финансово-экономическое управление", "required", 30},
+	{"3614-1", "Финансово-экономическое управление", "required", 30},
+	{"3699-1", "Финансово-экономическое управление", "required", 30},
+	{"по ЭБ", "Финансово-экономическое управление", "required", 30},
+	{"5990-1", "Финансово-экономическое управление", "required", 30},
+	{"700", "Финансово-экономическое управление", "required", 30},
+	{"3065-1", "Финансово-экономическое управление", "optional", 0},
+	// ИТ, кадры, мероприятия.
+	{"1292-1", "Управление информационных технологий", "required", 30},
+	{"подбора персонала", "Отдел кадров", "required", 30},
+	{"командировании", "Отдел кадров", "required", 30},
+	{"3897-1", "Культурно-массовый отдел", "required", 30},
+	// Лично новому сотруднику: заселение в общежитие.
+	{"поселения", "ivan", "required", 7},
+}
+
+// SeedAssignments creates the demo assignments once the documents are
+// parsed. Runs only when there are no assignments yet.
+func SeedAssignments(ctx context.Context, st Store) {
+	if n, err := st.CountAssignments(ctx); err != nil || n > 0 {
+		return
+	}
+	docs, err := st.ListDocuments(ctx)
+	if err != nil {
+		return
+	}
+	find := func(match string) string {
+		for _, d := range docs {
+			if d.DocumentNumber == match || strings.Contains(strings.ToLower(d.Title), strings.ToLower(match)) {
+				return d.ID
+			}
+		}
+		return ""
+	}
+	created := 0
+	for _, a := range demoAssignments {
+		docID := find(a.match)
+		if docID == "" {
+			continue
+		}
+		targetType, targetID := "all", ""
+		if a.target != "all" {
+			if dep, err := st.DepartmentByName(ctx, a.target); err == nil {
+				targetType, targetID = "department", dep.ID
+			} else if u, _, err := st.GetUserByLogin(ctx, a.target); err == nil {
+				targetType, targetID = "user", u.ID
+			} else {
+				continue
+			}
+		}
+		var due *time.Time
+		if a.dueDays > 0 {
+			t := time.Now().AddDate(0, 0, a.dueDays).Truncate(24 * time.Hour)
+			due = &t
+		}
+		if _, _, err := st.UpsertAssignment(ctx, model.Assignment{
+			DocumentID: docID, TargetType: targetType, TargetID: targetID,
+			Requirement: a.requirement, DueDate: due,
+		}); err == nil {
+			created++
+		}
+	}
+	log.Printf("seed: %d demo assignments", created)
 }
