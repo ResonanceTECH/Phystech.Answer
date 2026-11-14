@@ -1,1 +1,5 @@
-export type { User } from './model/types'
+export { authApi } from './api/authApi'
+export type { LoginInput, RegisterInput } from './api/authApi'
+export { useAuthStore } from './model/authStore'
+export { isAdminRole } from './model/types'
+export type { User, UserRole } from './model/types'

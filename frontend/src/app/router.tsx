@@ -7,6 +7,9 @@ import { AdminDashboardPage } from '@/pages/admin/dashboard/AdminDashboardPage'
 import { AdminDocumentsPage } from '@/pages/admin/documents/AdminDocumentsPage'
 import { AdminStubPage } from '@/pages/admin/stub/AdminStubPage'
 import { DocumentUploadPage } from '@/pages/admin/upload/DocumentUploadPage'
+import { ForgotPasswordPage } from '@/pages/auth/forgot-password/ForgotPasswordPage'
+import { LoginPage } from '@/pages/auth/login/LoginPage'
+import { RegisterPage } from '@/pages/auth/register/RegisterPage'
 import { ChatPage } from '@/pages/chat/ChatPage'
 import { DocumentDetailsPage } from '@/pages/document-details/DocumentDetailsPage'
 import { DocumentsPage } from '@/pages/documents/DocumentsPage'
@@ -81,5 +84,8 @@ export const router = createBrowserRouter([
       },
     ],
   },
+  { path: paths.auth.login, element: <LoginPage /> },
+  { path: paths.auth.register, element: <RegisterPage /> },
+  { path: paths.auth.forgotPassword, element: <ForgotPasswordPage /> },
   { path: paths.home, element: <LandingPage /> },
 ])

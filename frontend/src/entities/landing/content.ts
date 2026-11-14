@@ -15,7 +15,7 @@ export const landingHero = {
   accentFrom: 2,
   subtitle:
     'Задайте вопрос обычным языком — ассистент найдёт нужные регламенты МФТИ, соберёт пошаговую инструкцию и покажет источники.',
-  primaryCta: { label: 'Открыть ассистента', to: '/app' },
+  primaryCta: { label: 'Открыть ассистента', to: '/auth/login' },
   secondaryCta: { label: 'Как это работает', href: '#how-it-works' },
   scrollLabel: 'Листайте вниз',
   scrollTarget: '#hero-continue',
@@ -292,7 +292,7 @@ export const landingCta = {
   id: 'cta',
   title: 'Задайте первый вопрос ассистенту',
   text: 'Командировка, ФЛС, смета или заявка в ЦИТ — ответ с источниками уже ждёт.',
-  primaryCta: { label: 'Открыть Физтех.Ответ', to: '/app' },
+  primaryCta: { label: 'Зарегистрироваться', to: '/auth/register' },
   secondaryCta: { label: 'Посмотреть темы', href: '#categories' },
 }
 
@@ -315,7 +315,7 @@ export const landingFooter = {
     {
       title: 'Приложение',
       links: [
-        { label: 'Открыть ассистента', href: '/app' },
+        { label: 'Открыть ассистента', href: '/auth/login' },
         { label: 'Документы', href: '/app/documents' },
         { label: 'Инструкции', href: '/app/instructions' },
       ],

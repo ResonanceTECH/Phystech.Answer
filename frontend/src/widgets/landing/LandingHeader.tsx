@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { paths } from '@/app/router/routePaths'
 import { landingHero, landingNav } from '@/entities/landing/content'
 import { cn } from '@/shared/lib/cn'
 import { getActiveSectionId, scrollToHash } from '@/shared/lib/scroll'
@@ -88,11 +89,11 @@ export function LandingHeader() {
         </nav>
 
         <div className="pl-header__actions">
-          <Link to="/app/documents" className="pl-btn pl-btn--ghost pl-header__ghost">
-            Документы
+          <Link to={paths.auth.login} className="pl-btn pl-btn--ghost pl-header__ghost">
+            Войти
           </Link>
-          <Link to={landingHero.primaryCta.to} className="pl-btn pl-btn--primary">
-            {landingHero.primaryCta.label}
+          <Link to={paths.auth.register} className="pl-btn pl-btn--primary">
+            Зарегистрироваться
           </Link>
           <button
             ref={toggleRef}
@@ -150,18 +151,18 @@ export function LandingHeader() {
           </nav>
           <div className="pl-mobile-menu__cta">
             <Link
-              to="/app/documents"
+              to={paths.auth.login}
               className="pl-btn pl-btn--ghost"
               onClick={() => setMenuOpen(false)}
             >
-              Документы
+              Войти
             </Link>
             <Link
-              to={landingHero.primaryCta.to}
+              to={paths.auth.register}
               className="pl-btn pl-btn--primary"
               onClick={() => setMenuOpen(false)}
             >
-              {landingHero.primaryCta.label}
+              Зарегистрироваться
             </Link>
           </div>
         </div>

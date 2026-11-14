@@ -8,6 +8,7 @@ async function request<T>(
   init?: RequestInit,
 ): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...init?.headers },
     ...init,
   })
@@ -17,8 +18,14 @@ async function request<T>(
     let message = res.statusText
     try {
       body = await res.json()
-      const parsed = body as { error?: string; message?: string }
-      message = parsed.error ?? parsed.message ?? message
+      const parsed = body as {
+        error?: string | { code?: string; message?: string }
+        message?: string
+      }
+      message =
+        (typeof parsed.error === 'object' ? parsed.error?.message : parsed.error) ??
+        parsed.message ??
+        message
     } catch {
       message = await res.text().catch(() => res.statusText)
     }
