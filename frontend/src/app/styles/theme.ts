@@ -87,19 +87,20 @@ export const appTheme = createTheme({
             'transform 0.25s ease, background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease',
           '&:hover': { transform: 'translateY(-1px)' },
           '&:active': { transform: 'translateY(0)' },
-        },
-        containedPrimary: {
-          boxShadow: '0 14px 40px rgba(124, 58, 237, 0.32)',
-          '&:hover': { backgroundColor: VIOLET_BRIGHT },
-        },
-        outlinedPrimary: {
-          background: '#1d1335',
-          borderColor: BORDER_STRONG,
-          color: VIOLET_BRIGHT,
-          '&:hover': {
-            background: '#241840',
-            borderColor: VIOLET,
-            color: '#f5f3fc',
+          // MUI 9: color/variant class keys were removed — target via selectors.
+          '&.MuiButton-contained.MuiButton-colorPrimary': {
+            boxShadow: '0 14px 40px rgba(124, 58, 237, 0.32)',
+            '&:hover': { backgroundColor: VIOLET_BRIGHT },
+          },
+          '&.MuiButton-outlined.MuiButton-colorPrimary': {
+            background: '#1d1335',
+            borderColor: BORDER_STRONG,
+            color: VIOLET_BRIGHT,
+            '&:hover': {
+              background: '#241840',
+              borderColor: VIOLET,
+              color: '#f5f3fc',
+            },
           },
         },
       },
