@@ -75,9 +75,36 @@ func (s *Store) ListDocuments() []model.Document {
 	defer s.mu.RUnlock()
 	out := make([]model.Document, 0, len(s.docs))
 	for _, d := range s.docs {
-		out = append(out, model.Document{ID: d.ID, Title: d.Title, Tags: d.Tags})
+		out = append(out, model.Document{
+			ID: d.ID, Title: d.Title, Tags: d.Tags,
+			DocumentNumber: d.DocumentNumber, DocumentType: d.DocumentType,
+			DocumentDate: d.DocumentDate, Category: d.Category,
+			LegalStatus: d.LegalStatus,
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Title < out[j].Title })
+	return out
+}
+
+// Doc returns the stored metadata of a document (for chunk enrichment).
+func (s *Store) Doc(id string) (model.Document, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	d, ok := s.docs[id]
+	return d, ok
+}
+
+// Chunks returns all chunks of a document in index order.
+func (s *Store) Chunks(docID string) []model.Chunk {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ids := s.docChunks[docID]
+	out := make([]model.Chunk, 0, len(ids))
+	for _, id := range ids {
+		if c, ok := s.chunks[id]; ok {
+			out = append(out, c)
+		}
+	}
 	return out
 }
 

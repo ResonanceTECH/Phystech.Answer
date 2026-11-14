@@ -4,3 +4,11 @@ bin/
 *.exe
 Dockerfile
 .dockerignore
+
+# веса и датасеты не нужны для сборки Go-бинарника (1.5+ ГБ контекста)
+models/
+data/
+benchmarks/
+tests/
+docs/
+scripts/

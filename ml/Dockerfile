@@ -9,5 +9,9 @@ FROM alpine:3.21
 RUN adduser -D appuser && mkdir -p /data && chown appuser /data
 USER appuser
 COPY --from=build /bin/ml /ml
+# Промпт-шаблоны читаются с диска в рантайме (LLM_PROMPT_DIR).
+COPY --from=build /app/prompts /app/prompts
+WORKDIR /app
+ENV LLM_PROMPT_DIR=/app/prompts
 EXPOSE 8000
 ENTRYPOINT ["/ml"]
