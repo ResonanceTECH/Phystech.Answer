@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -861,6 +863,27 @@ func (p *Postgres) GetAnswerByRun(ctx context.Context, runID string) (model.Answ
 	return a, steps, citations, nil
 }
 
+func (p *Postgres) ListAnswerSteps(ctx context.Context, answerID string) ([]model.AnswerStep, error) {
+	rows, err := p.pool.Query(ctx, `SELECT id, step_order, title, description,
+		responsible, deadline, condition_text, required
+		FROM answer_steps WHERE answer_id=$1 ORDER BY step_order`, answerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var steps []model.AnswerStep
+	for rows.Next() {
+		var s model.AnswerStep
+		if err := rows.Scan(&s.ID, &s.Order, &s.Title, &s.Description,
+			&s.Responsible, &s.Deadline, &s.Condition, &s.Required); err != nil {
+			return nil, err
+		}
+		s.CitationIDs = []string{}
+		steps = append(steps, s)
+	}
+	return steps, rows.Err()
+}
+
 // ---------- jobs ----------
 
 func (p *Postgres) EnqueueJob(ctx context.Context, j model.Job) (model.Job, error) {
@@ -1061,16 +1084,37 @@ func (p *Postgres) SearchChunks(ctx context.Context, query string, docIDs, categ
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	q := `SELECT c.id, c.version_id, d.id, d.title,
+	terms := strings.Fields(query)
+	// Термы попадают в to_tsquery — выкидываем всё, что может сломать синтаксис.
+	clean := terms[:0]
+	for _, t := range terms {
+		t = termSanitizer.ReplaceAllString(t, "")
+		if len(t) > 0 {
+			clean = append(clean, t)
+		}
+	}
+	terms = clean
+	if len(terms) == 0 {
+		return nil, nil
+	}
+	// OR-соединение термов: plainto_tsquery даёт AND-семантику, которая для
+	// русской морфологии слишком строга (разные словоформы — разные лексемы).
+	// to_tsquery по 'a | b' стеммит каждый терм и даёт forgiving recall.
+	q := `WITH q AS (
+		SELECT to_tsquery('russian', string_agg(lower(t), ' | ')) AS tsq
+		FROM unnest($1::text[]) t
+	)
+	SELECT c.id, c.version_id, d.id, d.title,
 		COALESCE(s.section_number,''), c.content, v.legal_status,
-		ts_rank(to_tsvector('russian', c.content), plainto_tsquery('russian', $1)) AS rank
+		ts_rank(to_tsvector('russian', lower(c.content)), q.tsq) AS rank
 		FROM document_chunks c
+		CROSS JOIN q
 		JOIN document_versions v ON v.id = c.version_id
 		JOIN documents d ON d.id = v.document_id
 		LEFT JOIN document_sections s ON s.id = c.section_id
 		WHERE v.processing_status = 'published'
-		  AND to_tsvector('russian', c.content) @@ plainto_tsquery('russian', $1)`
-	args := []any{query}
+		  AND to_tsvector('russian', lower(c.content)) @@ q.tsq`
+	args := []any{terms}
 	n := 2
 	if len(docIDs) > 0 {
 		q += ` AND d.id = ANY($` + itoa(n) + `)`
@@ -1098,6 +1142,138 @@ func (p *Postgres) SearchChunks(ctx context.Context, query string, docIDs, categ
 		out = append(out, h)
 	}
 	return out, rows.Err()
+}
+
+var termSanitizer = regexp.MustCompile(`[^\p{L}\p{N}_-]+`)
+
+// ---------- feedback / saved instructions / action routes ----------
+
+func (p *Postgres) AddFeedback(ctx context.Context, answerID, userID, rating, comment string) error {
+	_, err := p.pool.Exec(ctx, `INSERT INTO answer_feedback (id, answer_id, user_id, rating, comment)
+		VALUES ($1,$2,$3,$4,$5)`, newID("fb"), answerID, nilIfEmpty(userID), rating, comment)
+	return err
+}
+
+func (p *Postgres) CreateSavedInstruction(ctx context.Context, si model.SavedInstruction) (model.SavedInstruction, error) {
+	si.ID = newID("saved")
+	si.CreatedAt = time.Now()
+	_, err := p.pool.Exec(ctx, `INSERT INTO saved_instructions (id, user_id, answer_id, title, created_at)
+		VALUES ($1,$2,$3,$4,$5)`, si.ID, si.UserID, si.AnswerID, si.Title, si.CreatedAt)
+	return si, err
+}
+
+func (p *Postgres) ListSavedInstructions(ctx context.Context, userID string) ([]model.SavedInstruction, error) {
+	rows, err := p.pool.Query(ctx, `SELECT id, user_id, answer_id, title, created_at
+		FROM saved_instructions WHERE user_id=$1 ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.SavedInstruction
+	for rows.Next() {
+		var s model.SavedInstruction
+		if err := rows.Scan(&s.ID, &s.UserID, &s.AnswerID, &s.Title, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) CreateActionRoute(ctx context.Context, route model.ActionRoute, steps []model.ActionRouteStep) (model.ActionRoute, error) {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return model.ActionRoute{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	route.ID = newID("route")
+	now := time.Now()
+	route.CreatedAt, route.UpdatedAt = now, now
+	_, err = tx.Exec(ctx, `INSERT INTO action_routes (id, user_id, answer_id, title, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$5)`, route.ID, route.UserID, route.AnswerID, route.Title, now)
+	if err != nil {
+		return model.ActionRoute{}, err
+	}
+	for i := range steps {
+		steps[i].ID = newID("rstep")
+		steps[i].RouteID = route.ID
+		if _, err := tx.Exec(ctx, `INSERT INTO action_route_steps
+			(id, route_id, step_id, step_order, title) VALUES ($1,$2,$3,$4,$5)`,
+			steps[i].ID, route.ID, nilIfEmpty(steps[i].StepID), steps[i].Order, steps[i].Title); err != nil {
+			return model.ActionRoute{}, err
+		}
+	}
+	return route, tx.Commit(ctx)
+}
+
+func (p *Postgres) ListActionRoutes(ctx context.Context, userID string) ([]model.ActionRoute, error) {
+	rows, err := p.pool.Query(ctx, `SELECT id, user_id, answer_id, title, stale, created_at, updated_at
+		FROM action_routes WHERE user_id=$1 ORDER BY updated_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.ActionRoute
+	for rows.Next() {
+		var r model.ActionRoute
+		if err := rows.Scan(&r.ID, &r.UserID, &r.AnswerID, &r.Title, &r.Stale, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) GetActionRoute(ctx context.Context, id string) (model.ActionRoute, []model.ActionRouteStep, error) {
+	var route model.ActionRoute
+	err := p.pool.QueryRow(ctx, `SELECT id, user_id, answer_id, title, stale, created_at, updated_at
+		FROM action_routes WHERE id=$1`, id).Scan(
+		&route.ID, &route.UserID, &route.AnswerID, &route.Title, &route.Stale, &route.CreatedAt, &route.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.ActionRoute{}, nil, ErrNotFound
+	}
+	if err != nil {
+		return model.ActionRoute{}, nil, err
+	}
+	rows, err := p.pool.Query(ctx, `SELECT id, route_id, COALESCE(step_id,''), step_order, title, done, done_at
+		FROM action_route_steps WHERE route_id=$1 ORDER BY step_order`, id)
+	if err != nil {
+		return route, nil, err
+	}
+	defer rows.Close()
+	var steps []model.ActionRouteStep
+	for rows.Next() {
+		var s model.ActionRouteStep
+		if err := rows.Scan(&s.ID, &s.RouteID, &s.StepID, &s.Order, &s.Title, &s.Done, &s.DoneAt); err != nil {
+			return route, nil, err
+		}
+		steps = append(steps, s)
+	}
+	return route, steps, rows.Err()
+}
+
+func (p *Postgres) SetRouteStepDone(ctx context.Context, routeID, stepID string, done bool) error {
+	res, err := p.pool.Exec(ctx, `UPDATE action_route_steps
+		SET done=$3, done_at=CASE WHEN $3 THEN now() ELSE NULL END
+		WHERE id=$2 AND route_id=$1`, routeID, stepID, done)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	p.pool.Exec(ctx, `UPDATE action_routes SET updated_at=now() WHERE id=$1`, routeID)
+	return nil
+}
+
+func (p *Postgres) FindDocumentByNumber(ctx context.Context, number string) (model.Document, error) {
+	d, err := scanDocument(p.pool.QueryRow(ctx,
+		documentProjection+` WHERE d.document_number = $1`, number))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.Document{}, ErrNotFound
+	}
+	return d, err
 }
 
 // ---------- audit ----------

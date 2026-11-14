@@ -1,0 +1,571 @@
+openapi: 3.0.3
+info:
+  title: Физтех.Ответ API
+  version: 0.2.0
+  description: |
+    Интеллектуальный навигатор по внутренним регламентам МФТИ.
+    Все пути версионированы под /api/v1; не-versioned /api/* — совместимость
+    с текущим фронтендом.
+servers:
+  - url: http://localhost:8080/api/v1
+tags:
+  - name: auth
+  - name: documents
+  - name: conversations
+  - name: runs
+  - name: search
+  - name: answers
+  - name: admin
+  - name: system
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: Liveness
+      responses:
+        '200': { description: OK }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Вход по email + пароль
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Сессия создана, cookie fiztech_session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { description: Неверные учётные данные }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      responses:
+        '200': { description: Сессия отозвана }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      responses:
+        '200':
+          description: Текущий пользователь
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { description: Не авторизован }
+
+  /documents:
+    get:
+      tags: [documents]
+      summary: Каталог документов
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Список документов
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Document' }
+    post:
+      tags: [documents]
+      summary: Создать документ (метаданные, без файла)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Document' }
+      responses:
+        '201':
+          description: Создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Document' }
+
+  /documents/{id}:
+    get:
+      tags: [documents]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200':
+          description: Документ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Document' }
+        '404': { description: Не найден }
+    put:
+      tags: [documents]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Document' }
+      responses:
+        '200': { description: Обновлён }
+    delete:
+      tags: [documents]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '204': { description: Удалён }
+
+  /documents/{id}/sections:
+    get:
+      tags: [documents]
+      summary: Структура документа (пункты/приложения)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200':
+          description: Секции текущей версии
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Section' }
+
+  /documents/{id}/relations:
+    get:
+      tags: [documents]
+      summary: Нормативные связи документа (отменяет/изменяет/заменяет)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200':
+          description: Связи
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DocumentRelation' }
+
+  /documents/{id}/file:
+    get:
+      tags: [documents]
+      summary: Скачать исходный файл
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: Файл }
+        '404': { description: Не найден }
+
+  /versions/{id}/chunks:
+    get:
+      tags: [documents]
+      summary: Чанки версии (для проверки парсинга и цитат)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200':
+          description: Чанки
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Chunk' }
+
+  /search:
+    post:
+      tags: [search]
+      summary: Полнотекстовый поиск по фрагментам
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string }
+                limit: { type: integer, default: 10 }
+      responses:
+        '200':
+          description: Релевантные чанки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/SearchResult' }
+
+  /conversations:
+    get:
+      tags: [conversations]
+      responses:
+        '200':
+          description: Диалоги пользователя
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Conversation' }
+    post:
+      tags: [conversations]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+      responses:
+        '201':
+          description: Создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversation' }
+
+  /conversations/{id}/messages:
+    get:
+      tags: [conversations]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200':
+          description: Сообщения
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Message' }
+    post:
+      tags: [conversations]
+      summary: Задать вопрос — создаёт answer_run в очереди
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+      responses:
+        '202':
+          description: Run поставлен в очередь
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { $ref: '#/components/schemas/Message' }
+                  run:     { $ref: '#/components/schemas/AnswerRun' }
+
+  /runs/{id}:
+    get:
+      tags: [runs]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200':
+          description: Статус run
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnswerRun' }
+
+  /runs/{id}/events:
+    get:
+      tags: [runs]
+      summary: SSE-поток событий run (retrieval/verification/answer)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200':
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  /runs/{id}/answer:
+    get:
+      tags: [runs]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200':
+          description: Финальный ответ с шагами и цитатами
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  answer:    { $ref: '#/components/schemas/Answer' }
+                  steps:     { type: array, items: { $ref: '#/components/schemas/AnswerStep' } }
+                  citations: { type: array, items: { $ref: '#/components/schemas/Citation' } }
+        '404': { description: Ответ ещё не готов }
+
+  /runs/{id}/cancel:
+    post:
+      tags: [runs]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: Отменён }
+
+  /answers/{id}/feedback:
+    post:
+      tags: [answers]
+      summary: Оценка ответа
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating:  { type: string, enum: [positive, negative] }
+                comment: { type: string }
+      responses:
+        '201': { description: Принято }
+
+  /saved-instructions:
+    get:
+      tags: [answers]
+      responses:
+        '200': { description: Сохранённые инструкции пользователя }
+    post:
+      tags: [answers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answerId]
+              properties:
+                answerId: { type: string }
+                title:    { type: string }
+      responses:
+        '201': { description: Сохранено }
+
+  /action-routes:
+    get:
+      tags: [answers]
+      responses:
+        '200': { description: Маршруты пользователя }
+    post:
+      tags: [answers]
+      summary: Создать интерактивный маршрут из ответа
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answerId]
+              properties:
+                answerId: { type: string }
+                title:    { type: string }
+      responses:
+        '201': { description: Создан }
+
+  /action-routes/{id}:
+    get:
+      tags: [answers]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: Маршрут с шагами }
+
+  /action-routes/{id}/steps/{stepId}:
+    patch:
+      tags: [answers]
+      summary: Отметить шаг маршрута выполненным
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: stepId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [done]
+              properties:
+                done: { type: boolean }
+      responses:
+        '200': { description: Обновлено }
+
+  /admin/documents/upload:
+    post:
+      tags: [admin]
+      summary: Загрузка файлов (pdf/docx/xlsx/txt) — admin/expert
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items: { type: string, format: binary }
+      responses:
+        '202': { description: Файлы приняты в обработку }
+        '401': { description: Не авторизован }
+        '403': { description: Нужна роль admin/expert }
+
+  /admin/processing:
+    get:
+      tags: [admin]
+      summary: Очередь задач обработки
+      responses:
+        '200': { description: Задачи }
+
+  /admin/processing/{id}/retry:
+    post:
+      tags: [admin]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: Перезапущено }
+
+  /admin/documents/{id}/publish:
+    post:
+      tags: [admin]
+      summary: Опубликовать документ после проверки (requires_review → published)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: Опубликован }
+
+  /admin/documents/{id}/reprocess:
+    post:
+      tags: [admin]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '202': { description: Поставлено в очередь }
+
+  /admin/document-relations/{id}/verify:
+    post:
+      tags: [admin]
+      summary: Подтвердить автоматически найденную нормативную связь
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: Подтверждено }
+
+  /admin/dashboard:
+    get:
+      tags: [admin]
+      summary: Сводка для админ-панели
+      responses:
+        '200': { description: Счётчики }
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:        { type: string }
+        name:      { type: string }
+        email:     { type: string }
+        role:      { type: string, enum: [student, employee, expert, admin] }
+        createdAt: { type: string, format: date-time }
+    Document:
+      type: object
+      properties:
+        id:             { type: string }
+        title:          { type: string }
+        summary:        { type: string }
+        docType:        { type: string }
+        documentNumber: { type: string }
+        version:        { type: string }
+        status:         { type: string, enum: [draft, processing, requires_review, published, archived] }
+        tags:           { type: array, items: { type: string } }
+        content:        { type: string }
+        updatedAt:      { type: string, format: date-time }
+    Section:
+      type: object
+      properties:
+        id:        { type: string }
+        versionId: { type: string }
+        number:    { type: string }
+        title:     { type: string }
+        pageFrom:  { type: integer }
+        pageTo:    { type: integer }
+    Chunk:
+      type: object
+      properties:
+        id:            { type: string }
+        versionId:     { type: string }
+        sectionNumber: { type: string }
+        content:       { type: string }
+        tokenCount:    { type: integer }
+    DocumentRelation:
+      type: object
+      properties:
+        id:           { type: string }
+        relationType: { type: string, enum: [repeals, amends, replaces, references] }
+        reviewStatus: { type: string, enum: [pending, verified, rejected] }
+    Conversation:
+      type: object
+      properties:
+        id:        { type: string }
+        title:     { type: string }
+        createdAt: { type: string, format: date-time }
+    Message:
+      type: object
+      properties:
+        id:              { type: string }
+        conversationId:  { type: string }
+        role:            { type: string, enum: [user, assistant, system] }
+        text:            { type: string }
+        createdAt:       { type: string, format: date-time }
+    AnswerRun:
+      type: object
+      properties:
+        id:        { type: string }
+        status:    { type: string, enum: [queued, running, done, failed, cancelled] }
+        createdAt: { type: string, format: date-time }
+    Answer:
+      type: object
+      properties:
+        id:                 { type: string }
+        runId:              { type: string }
+        status:             { type: string }
+        summary:            { type: string }
+        warnings:           { type: array, items: { type: string } }
+        missingInformation: { type: array, items: { type: string } }
+    AnswerStep:
+      type: object
+      properties:
+        id:          { type: string }
+        order:       { type: integer }
+        title:       { type: string }
+        description: { type: string }
+        responsible: { type: string }
+        deadline:    { type: string }
+        citationIds: { type: array, items: { type: string } }
+    Citation:
+      type: object
+      properties:
+        id:            { type: string }
+        chunkId:       { type: string }
+        documentId:    { type: string }
+        documentTitle: { type: string }
+        sectionNumber: { type: string }
+        pageNumber:    { type: integer }
+        quote:         { type: string }
+        score:         { type: number }
+    SearchResult:
+      type: object
+      properties:
+        chunkId:       { type: string }
+        documentId:    { type: string }
+        documentTitle: { type: string }
+        sectionNumber: { type: string }
+        content:       { type: string }
+        score:         { type: number }
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: fiztech_session
+security:
+  - sessionCookie: []

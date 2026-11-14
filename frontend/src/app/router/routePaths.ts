@@ -2,7 +2,11 @@
 // собираются URL приложения.
 export const paths = {
   home: '/',
-  login: '/login',
+  auth: {
+    login: '/auth/login',
+    register: '/auth/register',
+    forgotPassword: '/auth/forgot-password',
+  },
   app: {
     root: '/app',
     home: '/app',

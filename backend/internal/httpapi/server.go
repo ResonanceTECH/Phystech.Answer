@@ -45,6 +45,8 @@ func (s *Server) Handler() http.Handler {
 
 	// Auth.
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
+	mux.HandleFunc("POST /api/v1/auth/register", s.register)
+	mux.HandleFunc("POST /api/v1/auth/forgot-password", s.forgotPassword)
 	mux.HandleFunc("POST /api/v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /api/v1/auth/me", s.me)
 	mux.HandleFunc("GET /api/v1/users/me", s.me)
@@ -84,6 +86,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/events", s.runEvents)
 	mux.HandleFunc("GET /api/v1/runs/{id}/answer", s.getRunAnswer)
 	mux.HandleFunc("POST /api/v1/runs/{id}/cancel", s.cancelRun)
+
+	// Feedback, saved instructions, action routes.
+	mux.HandleFunc("POST /api/v1/answers/{id}/feedback", s.answerFeedback)
+	mux.HandleFunc("POST /api/v1/saved-instructions", s.createSavedInstruction)
+	mux.HandleFunc("GET /api/v1/saved-instructions", s.listSavedInstructions)
+	mux.HandleFunc("POST /api/v1/action-routes", s.createActionRoute)
+	mux.HandleFunc("GET /api/v1/action-routes", s.listActionRoutes)
+	mux.HandleFunc("GET /api/v1/action-routes/{id}", s.getActionRoute)
+	mux.HandleFunc("PATCH /api/v1/action-routes/{id}/steps/{stepId}", s.patchRouteStep)
 
 	// Admin.
 	mux.HandleFunc("POST /api/v1/admin/documents/upload", s.uploadDocuments)

@@ -68,6 +68,7 @@ type Store interface {
 	ListRunEvents(ctx context.Context, runID string, afterID int64) ([]model.RunEvent, error)
 	CreateAnswer(ctx context.Context, a model.Answer, steps []model.AnswerStep, citations []model.Citation) (model.Answer, error)
 	GetAnswerByRun(ctx context.Context, runID string) (model.Answer, []model.AnswerStep, []model.Citation, error)
+	ListAnswerSteps(ctx context.Context, answerID string) ([]model.AnswerStep, error)
 
 	// Jobs.
 	EnqueueJob(ctx context.Context, j model.Job) (model.Job, error)
@@ -85,6 +86,18 @@ type Store interface {
 	ListRelations(ctx context.Context, docID string) ([]model.DocumentRelation, error)
 	CreateRelation(ctx context.Context, rel model.DocumentRelation) (model.DocumentRelation, error)
 	VerifyRelation(ctx context.Context, id, status string) error
+
+	// Feedback / saved instructions / action routes.
+	AddFeedback(ctx context.Context, answerID, userID, rating, comment string) error
+	CreateSavedInstruction(ctx context.Context, si model.SavedInstruction) (model.SavedInstruction, error)
+	ListSavedInstructions(ctx context.Context, userID string) ([]model.SavedInstruction, error)
+	CreateActionRoute(ctx context.Context, route model.ActionRoute, steps []model.ActionRouteStep) (model.ActionRoute, error)
+	ListActionRoutes(ctx context.Context, userID string) ([]model.ActionRoute, error)
+	GetActionRoute(ctx context.Context, id string) (model.ActionRoute, []model.ActionRouteStep, error)
+	SetRouteStepDone(ctx context.Context, routeID, stepID string, done bool) error
+
+	// Lookup for relation auto-detection: finds a document by its number.
+	FindDocumentByNumber(ctx context.Context, number string) (model.Document, error)
 
 	// Audit.
 	AddAuditLog(ctx context.Context, userID, entity, entityID, action, reason string, oldVal, newVal any) error

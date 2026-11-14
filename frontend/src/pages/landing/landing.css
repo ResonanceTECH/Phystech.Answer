@@ -51,7 +51,7 @@ body {
   box-sizing: border-box;
 }
 
-.pl-root a {
+.pl-root :where(a) {
   color: inherit;
   text-decoration: none;
 }
@@ -1695,6 +1695,7 @@ body {
   background: #07050e;
   color: var(--pl-ink);
   padding-bottom: 7rem;
+  container-type: inline-size;
 }
 @media (min-width: 768px) {
   .pl-footer {
@@ -1788,7 +1789,7 @@ body {
 }
 .pl-footer__mark {
   font-family: var(--pl-font-display);
-  font-size: clamp(3rem, 11vw, 9rem);
+  font-size: 9.2cqw;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.03em;
@@ -1801,7 +1802,7 @@ body {
   color: transparent;
   user-select: none;
   white-space: nowrap;
-  overflow: hidden;
+  text-align: center;
 }
 
 /* ---------- печать ---------- */

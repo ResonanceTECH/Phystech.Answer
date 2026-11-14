@@ -10,7 +10,7 @@ async function request<T>(
   const isForm = init?.body instanceof FormData
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
-    credentials: 'same-origin',
+    credentials: 'include',
     // Для FormData заголовок с boundary выставит браузер.
     headers: isForm ? init?.headers : { 'Content-Type': 'application/json', ...init?.headers },
   })
@@ -20,10 +20,14 @@ async function request<T>(
     let message = res.statusText
     try {
       body = await res.json()
-      // Форматы бэкенда: {"error":"..."} и {"error":{"code","message"}}.
-      const parsed = body as { error?: string | { message?: string }; message?: string }
-      const e = parsed.error
-      message = (typeof e === 'string' ? e : e?.message) ?? parsed.message ?? message
+      const parsed = body as {
+        error?: string | { code?: string; message?: string }
+        message?: string
+      }
+      message =
+        (typeof parsed.error === 'object' ? parsed.error?.message : parsed.error) ??
+        parsed.message ??
+        message
     } catch {
       message = await res.text().catch(() => res.statusText)
     }

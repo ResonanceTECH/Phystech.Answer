@@ -130,7 +130,7 @@ export function AppHeader({ title }: AppHeaderProps) {
               <MenuItem
                 onClick={() => {
                   setAnchor(null)
-                  logout.mutate(undefined, { onSettled: () => navigate(paths.login, { replace: true }) })
+                  logout.mutate(undefined, { onSettled: () => navigate(paths.auth.login, { replace: true }) })
                 }}
               >
                 <ListItemIcon>

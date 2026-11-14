@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { paths } from '@/app/router/routePaths'
 import { landingHero, landingNav } from '@/entities/landing/content'
 import { useSession } from '@/entities/session'
 import { cn } from '@/shared/lib/cn'
@@ -10,8 +11,8 @@ const SECTION_IDS = landingNav.map((item) => item.id)
 export function LandingHeader() {
   const { user } = useSession()
   const account = user
-    ? { to: '/app/onboarding', label: 'Мой кабинет' }
-    : { to: '/login', label: 'Войти' }
+    ? { to: paths.app.onboarding, label: 'Мой кабинет' }
+    : { to: paths.auth.login, label: 'Войти' }
   const [scrolled, setScrolled] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -96,8 +97,8 @@ export function LandingHeader() {
           <Link to={account.to} className="pl-btn pl-btn--ghost pl-header__ghost pl-header__login">
             {account.label}
           </Link>
-          <Link to={landingHero.primaryCta.to} className="pl-btn pl-btn--primary">
-            {landingHero.primaryCta.label}
+          <Link to={paths.auth.register} className="pl-btn pl-btn--primary">
+            Зарегистрироваться
           </Link>
           <button
             ref={toggleRef}
@@ -162,11 +163,11 @@ export function LandingHeader() {
               {account.label}
             </Link>
             <Link
-              to={landingHero.primaryCta.to}
+              to={paths.auth.register}
               className="pl-btn pl-btn--primary"
               onClick={() => setMenuOpen(false)}
             >
-              {landingHero.primaryCta.label}
+              Зарегистрироваться
             </Link>
           </div>
         </div>

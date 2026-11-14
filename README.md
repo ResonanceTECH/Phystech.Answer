@@ -37,20 +37,25 @@
 ### Запуск
 
 ```bash
-cp .env.example .env          # задайте DB_PASSWORD (любой пароль без символов # @ / ? :)
 docker compose up -d --build  # первый запуск: 10–20 минут (скачивание моделей, OCR сканов)
 ```
+
+`.env` не обязателен: все параметры имеют значения по умолчанию
+(переопределения — в `.env.example`).
 
 После старта:
 
 | Сервис | Адрес |
 |---|---|
-| **Веб-интерфейс** | http://localhost:3001 (чат: «Перейти к ассистенту») |
-| API бэкенда | http://localhost:8080/api/health |
-| ML-сервис | http://localhost:8001/health — показывает число документов, фрагментов и векторов |
-| PostgreSQL | `localhost:5432`, БД `fiztech_answer`, пользователь `fiztech_admin` |
+| **Веб-интерфейс** | http://localhost:3000 — вход: демо-кнопки «Сотрудник» / «Администратор» |
+| API бэкенда | http://localhost:8080/api/health · спецификация — `api/openapi.yaml` |
+| ML-сервис | http://localhost:8000/health — число документов, фрагментов, векторов и конфигурация конвейера |
+| PostgreSQL | `localhost:5432`, БД `fiztech_answer`, пользователь `fiztech_admin`, пароль `fiztech_dev_hack` (или `POSTGRES_PASSWORD`) |
 
-Готовность: `curl localhost:8001/health` — когда `documents: 20` и
+Демо-учётные записи: сотрудник `ivan` / `ivan123`, администратор `admin` / `admin123`.
+Новые сотрудники регистрируются сами (`/auth/register`).
+
+Готовность: `curl localhost:8000/health` — когда `documents: 20` и
 `vectors` = `chunks`, база проиндексирована.
 
 ```bash
@@ -77,7 +82,8 @@ curl -s localhost:8080/api/ask -H 'Content-Type: application/json' \
 | Компонент | Модель | Где работает |
 |---|---|---|
 | Эмбеддинги | `bge-m3` (мультиязычная, 568M) | контейнер `ollama` |
-| Генерация, реранкинг, декомпозиция | `qwen3.5:4b` | контейнер `ollama` |
+| Генерация ответа, декомпозиция вопросов | `qwen3.5:4b` | контейнер `ollama` |
+| Реранкинг и решение «есть ли ответ в базе» | H2O-Lightning-4B (decision model) | контейнер `decider` (llama.cpp) |
 | OCR сканов | Tesseract 5 (rus+eng) | контейнер `backend` |
 
 Опционально — любой OpenAI-совместимый API (Ollama Cloud, vLLM, OpenRouter…)
@@ -107,7 +113,8 @@ flowchart LR
 | `frontend/` | React 19, TypeScript, MUI, FSD | Чат: краткий ответ, шаги, кликабельные ссылки [n] на источники, предупреждения о редакциях, каталог документов |
 | `backend/` | Go, PostgreSQL, poppler, Tesseract | Приём файлов, разбор PDF/DOCX/XLSX, OCR сканов, реквизиты (тип, №, дата), хранение версий и пунктов, очередь задач, прокси вопросов |
 | `ml/` | Go (stdlib) | Разбиение на пункты, BM25 + векторный индекс, RRF, LLM-реранкинг, декомпозиция вопросов, генерация со ссылками, проверка цитат, оценка качества |
-| `ollama` | Ollama | Локальный инференс моделей |
+| `ollama` | Ollama | Локальный инференс моделей (эмбеддинги, генерация) |
+| `decider` | llama.cpp + H2O-Lightning-4B | Калиброванная вероятность «фрагмент отвечает на вопрос» |
 
 ### Путь документа: от файла до индекса
 
@@ -251,7 +258,7 @@ docker compose exec ml /eval -questions /data/questions.jsonl -stage e2e -config
 
 | Переменная | По умолчанию | Назначение |
 |---|---|---|
-| `DB_PASSWORD` | — (обязательно) | пароль пользователя `fiztech_admin` в PostgreSQL |
+| `POSTGRES_PASSWORD` | `fiztech_dev_hack` | пароль пользователя `fiztech_admin` в PostgreSQL |
 | `LLM_BASE_URL` | `http://ollama:11434/v1` | OpenAI-совместимый API для генерации |
 | `LLM_API_KEY` | пусто | ключ внешнего API |
 | `LLM_MODEL` | `qwen3.5:4b` | модель генерации, реранкинга и декомпозиции |
@@ -260,12 +267,14 @@ docker compose exec ml /eval -questions /data/questions.jsonl -stage e2e -config
 | `EMBED_BASE_URL` | `http://ollama:11434/v1` | API эмбеддингов |
 | `EMBED_MODEL` | `bge-m3` | модель эмбеддингов |
 | `RAG_MODE` | `hybrid` | `bm25` / `vector` / `hybrid` |
-| `RAG_RERANK` | `true` | LLM-реранкинг кандидатов |
+| `RAG_RERANK` | `decision` | `decision` — H2O-Lightning-4B, `llm` — модель генерации, `off` |
+| `DECISION_BASE_URL` | `http://decider:8080` | сервер decision-модели (`/v1/systemone`) |
+| `DECIDER_QUANT` | `Q4_K_M` | квантизация H2O-Lightning (`Q8_0` точнее, но медленнее на CPU) |
 | `RAG_DECOMPOSE` | `true` | разбиение составных вопросов |
 | `RAG_AMENDMENTS` | `true` | подтягивать изменяющие акты |
 | `RAG_TOP_K` | `6` | фрагментов в контексте генерации |
 | `RAG_MIN_VECTOR` / `RAG_MIN_BM25` | `0.47` / `10` | порог доказательств до реранкинга (откалиброван на наборе вопросов) |
-| `FRONTEND_PORT`, `API_PORT`, `ML_PORT`, `DB_PORT` | 3001, 8080, 8001, 5432 | порты на хосте |
+| `FRONTEND_PORT`, `API_PORT`, `ML_PORT`, `DB_PORT` | 3000, 8080, 8000, 5432 | порты на хосте |
 
 **GPU / Apple Silicon.** Ollama в Docker на macOS работает только на CPU.
 Для ускорения запустите Ollama на хосте (`ollama serve`, `ollama pull qwen3.5:4b bge-m3`)
@@ -276,6 +285,18 @@ docker compose exec ml /eval -questions /data/questions.jsonl -stage e2e -config
 `docker compose restart backend` — новые файлы будут разобраны и
 проиндексированы, уже загруженные пропущены. Либо загрузите через
 админ-раздел (`POST /api/v1/admin/documents/upload`, вход `admin` / `admin123`).
+
+### Локально, без Docker (для разработки)
+
+```bash
+# 0. PostgreSQL: роль и база — backend/db/init.sql
+# 1. ML-сервис
+cd ml && cp .env.example .env && go run ./cmd/ml               # :8000
+# 2. Backend API (+ отдельный воркер задач при желании: go run ./cmd/worker)
+cd backend && cp .env.example .env && go run ./cmd/server      # :8080
+# 3. Frontend
+cd frontend && npm install && npm run dev                      # :5173
+```
 
 ---
 

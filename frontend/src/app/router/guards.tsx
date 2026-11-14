@@ -19,7 +19,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   if (isLoading) return <FullscreenLoader />
   if (!user) {
     const next = encodeURIComponent(location.pathname + location.search)
-    return <Navigate to={`${paths.login}?next=${next}`} replace />
+    return <Navigate to={`${paths.auth.login}?next=${next}`} replace />
   }
   return <>{children}</>
 }
@@ -30,7 +30,7 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
   const location = useLocation()
   if (isLoading) return <FullscreenLoader />
   if (!user) {
-    return <Navigate to={`${paths.login}?next=${encodeURIComponent(location.pathname)}`} replace />
+    return <Navigate to={`${paths.auth.login}?next=${encodeURIComponent(location.pathname)}`} replace />
   }
   if (!canManageDocuments(user)) return <Navigate to={paths.app.home} replace />
   return <>{children}</>

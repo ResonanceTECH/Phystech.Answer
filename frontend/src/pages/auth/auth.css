@@ -1,0 +1,254 @@
+/* auth-страницы: та же сцена, что у лендинга — токены pl-root, орбы, типографика. */
+/* critique: карточка — единственный новый мотив; всё остальное наследуется от landing.css */
+
+.pl-auth {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  overflow-x: clip;
+
+  --pl-danger: #f87171;
+  --pl-danger-border: rgba(248, 113, 113, 0.35);
+  --pl-danger-bg: rgba(248, 113, 113, 0.09);
+}
+
+.pl-auth__top {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  height: 4.5rem;
+}
+@media (min-width: 768px) {
+  .pl-auth__top {
+    height: 5.25rem;
+  }
+}
+
+.pl-auth__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--pl-muted);
+  transition: color 0.2s ease;
+}
+.pl-auth__back:hover {
+  color: var(--pl-ink);
+}
+
+.pl-auth__main {
+  position: relative;
+  z-index: 10;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding-block: 2rem 4.5rem;
+}
+
+.pl-auth__card {
+  width: min(100%, 27rem);
+  border: 1px solid var(--pl-border);
+  border-radius: var(--pl-radius-xl);
+  background: var(--pl-surface);
+  box-shadow: var(--pl-shadow-lift);
+  padding: 2rem 1.5rem;
+}
+@media (min-width: 768px) {
+  .pl-auth__card {
+    padding: 2.75rem;
+  }
+}
+
+.pl-auth__title {
+  font-family: var(--pl-font-display);
+  font-weight: 700;
+  font-size: clamp(1.45rem, 3vw, 1.9rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.pl-auth__sub {
+  margin: 0.85rem 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--pl-muted);
+}
+
+.pl-auth__form {
+  margin-top: 1.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.05rem;
+}
+
+.pl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.pl-field__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.pl-field__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--pl-muted);
+}
+.pl-field__link {
+  font-size: 0.8125rem;
+  color: var(--pl-violet-bright);
+  transition: color 0.2s ease;
+}
+.pl-field__link:hover {
+  color: var(--pl-ink);
+}
+
+.pl-field__input {
+  width: 100%;
+  height: 3.25rem;
+  border-radius: 1rem;
+  border: 1px solid var(--pl-border);
+  background: var(--pl-violet-fill);
+  color: var(--pl-ink);
+  font-family: var(--pl-font-body);
+  font-size: 0.9375rem;
+  padding-inline: 1.1rem;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+.pl-field__input::placeholder {
+  color: var(--pl-faint);
+}
+.pl-field__input:focus {
+  border-color: var(--pl-violet-bright);
+}
+.pl-field__input:-webkit-autofill {
+  -webkit-text-fill-color: var(--pl-ink);
+  box-shadow: 0 0 0 1000px var(--pl-violet-fill) inset;
+  caret-color: var(--pl-ink);
+}
+.pl-field--invalid .pl-field__input {
+  border-color: var(--pl-danger-border);
+}
+.pl-field__error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--pl-danger);
+}
+
+.pl-auth__alert {
+  margin: 0;
+  border: 1px solid var(--pl-danger-border);
+  border-radius: 1rem;
+  background: var(--pl-danger-bg);
+  color: #fca5a5;
+  padding: 0.8rem 1.1rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.pl-auth__alert--ok {
+  border-color: var(--pl-border-strong);
+  background: var(--pl-violet-fill);
+  color: var(--pl-violet-bright);
+}
+
+.pl-auth__submit {
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.pl-auth__done {
+  margin-top: 1.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.05rem;
+}
+
+.pl-auth__alt {
+  margin: 1.5rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--pl-muted);
+  text-align: center;
+}
+.pl-auth__alt a {
+  color: var(--pl-violet-bright);
+  font-weight: 600;
+}
+.pl-auth__alt a:hover {
+  color: var(--pl-ink);
+}
+
+.pl-auth__hint {
+  margin-top: 1.5rem;
+  border-top: 1px dashed var(--pl-border-strong);
+  padding-top: 1.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.75;
+  color: var(--pl-faint);
+}
+.pl-auth__cred {
+  display: inline-flex;
+  border-radius: 999px;
+  border: 1px solid var(--pl-border-strong);
+  background: var(--pl-violet-fill);
+  color: var(--pl-violet-bright);
+  padding: 0.15rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Демо-вход в один клик */
+.pl-auth__demo {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--pl-border, rgba(167, 139, 250, 0.16));
+}
+.pl-auth__demo-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+.pl-auth__demo-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  min-height: 3.5rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: 1rem;
+  text-align: left;
+  color: var(--pl-white, #fff);
+  border: 1.5px solid var(--pl-violet-bright, #a78bfa);
+  background: rgba(167, 139, 250, 0.1);
+  cursor: pointer;
+}
+.pl-auth__demo-btn:hover {
+  background: rgba(167, 139, 250, 0.22);
+}
+.pl-auth__demo-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.pl-auth__demo-label {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.pl-auth__demo-hint {
+  font-size: 0.78rem;
+  opacity: 0.75;
+}
