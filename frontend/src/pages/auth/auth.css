@@ -8,6 +8,8 @@
   min-height: 100svh;
   overflow-x: clip;
 }
+/* Дополнительные токены (--pl-danger*, --pl-violet-hover) объявлены
+   в блоке .pl-root в landing.css — AuthShell вешает оба класса на корень. */
 
 .pl-auth__top {
   position: relative;
