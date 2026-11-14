@@ -1,16 +1,21 @@
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder'
 import BookmarkAddedIcon from '@mui/icons-material/BookmarkAdded'
 import {
+  Alert,
+  AlertTitle,
   Box,
   Button,
   Chip,
   Paper,
   Skeleton,
+  Stack,
   Tooltip,
   Typography,
 } from '@mui/material'
 import { useState } from 'react'
+import type { AnswerTrace } from '@/entities/answer'
 import type { ChatMessage } from '@/entities/conversation'
+import { formatDocDate, type SourceReference } from '@/entities/source-reference'
 import { useSaveInstruction } from '@/features/save-instruction'
 import { useChatUiStore } from '@/shared/lib'
 import { formatTime } from '@/shared/lib'
@@ -19,9 +24,9 @@ import { StatusChip, type StatusKind } from '@/shared/ui'
 const STATUS_LABEL: Record<string, { kind: StatusKind; label: string }> = {
   answered: { kind: 'success', label: 'Ответ подтверждён источниками' },
   partial: { kind: 'warning', label: 'Частичный ответ' },
-  clarification_required: { kind: 'info', label: 'Нужен уточняющий вопрос' },
+  clarification_required: { kind: 'info', label: 'Уточните вопрос' },
   not_found: { kind: 'warning', label: 'Информация не найдена' },
-  conflict: { kind: 'warning', label: 'Противоречия в документах' },
+  conflict: { kind: 'warning', label: 'Есть изменения редакций' },
   error: { kind: 'error', label: 'Ошибка' },
 }
 
@@ -87,7 +92,7 @@ function AssistantBubble({
           }}
         >
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Ищу подходящие документы и формирую ответ…
+            Ищу документы, сверяю редакции и формирую ответ…
           </Typography>
           <Skeleton variant="text" width="90%" />
           <Skeleton variant="text" width="75%" />
@@ -99,6 +104,12 @@ function AssistantBubble({
 
   const status = message.status ? STATUS_LABEL[message.status] : undefined
   const sources = message.sources ?? []
+  const structured = Boolean(message.summary)
+  const byRef = new Map(sources.map((s) => [s.ref, s]))
+  const openRef = (ref: number) => {
+    const src = byRef.get(ref)
+    if (src) openSources(src.documentId, src.quote)
+  }
 
   const handleSave = () => {
     saveInstruction({
@@ -126,41 +137,38 @@ function AssistantBubble({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
           {status && <StatusChip kind={status.kind} label={status.label} />}
           {message.stub && (
-            <Chip size="small" variant="outlined" color="warning" label="демо-ответ: ML недоступен" />
+            <Chip size="small" variant="outlined" color="warning" label="сервис поиска недоступен" />
           )}
           <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
             {formatTime(message.createdAt)}
           </Typography>
         </Box>
-        <Typography
-          variant="body2"
-          sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}
-        >
-          {message.text}
-        </Typography>
+
+        {structured ? (
+          <StructuredAnswer message={message} onRef={openRef} />
+        ) : (
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+            {message.text}
+          </Typography>
+        )}
 
         {sources.length > 0 && (
-          <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-              ИСТОЧНИКИ:
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 0.4 }}>
+              ИСТОЧНИКИ
             </Typography>
-            {sources.map((src, i) => (
-              <Tooltip key={src.id} title={src.quote} arrow>
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  color="primary"
-                  label={`${i + 1}. ${src.documentTitle}${src.sectionNumber ? ` · п. ${src.sectionNumber}` : ''}`}
-                  onClick={() => openSources(src.documentId, src.quote)}
-                  sx={{ maxWidth: 340 }}
-                />
-              </Tooltip>
-            ))}
+            <Stack spacing={0.75} sx={{ mt: 0.75 }}>
+              {sources.map((src) => (
+                <SourceCard key={src.id} src={src} onOpen={() => openSources(src.documentId, src.quote)} />
+              ))}
+            </Stack>
           </Box>
         )}
 
-        {!message.stub && (
-          <Box sx={{ mt: 1.5 }}>
+        {message.trace && <TraceLine trace={message.trace} />}
+
+        {!message.stub && message.status !== 'not_found' && message.status !== 'clarification_required' && (
+          <Box sx={{ mt: 1 }}>
             <Button
               size="small"
               variant="text"
@@ -174,5 +182,200 @@ function AssistantBubble({
         )}
       </Paper>
     </Box>
+  )
+}
+
+// Текст с маркерами [n]: маркеры становятся кликабельными ссылками на источник.
+function CitedText({ text, onRef }: { text: string; onRef: (ref: number) => void }) {
+  const parts = text.split(/(\[\d{1,2}\])/g)
+  return (
+    <>
+      {parts.map((part, i) => {
+        const m = /^\[(\d{1,2})\]$/.exec(part)
+        if (!m) return <span key={i}>{part}</span>
+        const ref = Number(m[1])
+        return (
+          <Box
+            key={i}
+            component="button"
+            type="button"
+            onClick={() => onRef(ref)}
+            sx={{
+              border: 0,
+              p: 0,
+              mx: 0.25,
+              px: 0.5,
+              borderRadius: 1,
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              lineHeight: 1.5,
+              verticalAlign: 'super',
+              cursor: 'pointer',
+              bgcolor: 'primary.main',
+              color: 'primary.contrastText',
+              opacity: 0.85,
+              '&:hover': { opacity: 1 },
+            }}
+          >
+            {ref}
+          </Box>
+        )
+      })}
+    </>
+  )
+}
+
+function StructuredAnswer({ message, onRef }: { message: ChatMessage; onRef: (ref: number) => void }) {
+  const steps = message.steps ?? []
+  const notes = message.notes ?? []
+  const conflicts = message.conflicts ?? []
+  return (
+    <Stack spacing={1.5}>
+      <Typography variant="body1" sx={{ lineHeight: 1.6, fontWeight: 500 }}>
+        <CitedText text={message.summary ?? ''} onRef={onRef} />
+      </Typography>
+
+      {steps.length > 0 && (
+        <Box>
+          <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
+            Порядок действий
+          </Typography>
+          <Stack component="ol" spacing={0.75} sx={{ m: 0, pl: 0, listStyle: 'none', counterReset: 'step' }}>
+            {steps.map((step, i) => (
+              <Box component="li" key={i} sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
+                <Box
+                  sx={{
+                    flex: '0 0 auto',
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    bgcolor: 'action.selected',
+                    display: 'grid',
+                    placeItems: 'center',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    mt: 0.125,
+                  }}
+                >
+                  {i + 1}
+                </Box>
+                <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+                  <CitedText text={step.text} onRef={onRef} />
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      {notes.length > 0 && (
+        <Box>
+          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+            Обратите внимание
+          </Typography>
+          <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+            {notes.map((n, i) => (
+              <Typography component="li" variant="body2" key={i} sx={{ lineHeight: 1.6 }}>
+                <CitedText text={n} onRef={onRef} />
+              </Typography>
+            ))}
+          </Box>
+        </Box>
+      )}
+
+      {conflicts.length > 0 && (
+        <Alert severity="warning" variant="outlined">
+          <AlertTitle sx={{ fontSize: 14 }}>Изменения редакций и противоречия</AlertTitle>
+          {conflicts.map((c, i) => (
+            <Typography variant="body2" key={i} sx={{ lineHeight: 1.6 }}>
+              <CitedText text={c.description} onRef={onRef} />
+            </Typography>
+          ))}
+        </Alert>
+      )}
+
+      {message.missing && message.status !== 'answered' && (
+        <Alert severity="info" variant="outlined">
+          <AlertTitle sx={{ fontSize: 14 }}>
+            {message.status === 'not_found' ? 'В базе нет ответа' : 'Не хватает сведений'}
+          </AlertTitle>
+          <Typography variant="body2">{message.missing}</Typography>
+        </Alert>
+      )}
+    </Stack>
+  )
+}
+
+function SourceCard({ src, onOpen }: { src: SourceReference; onOpen: () => void }) {
+  const requisites = [
+    src.documentNumber && !src.documentTitle.includes(src.documentNumber) ? `№ ${src.documentNumber}` : '',
+    src.documentDate ? `от ${formatDocDate(src.documentDate)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  return (
+    <Tooltip title={<Box sx={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{src.quote}</Box>} arrow placement="top-start">
+      <Box
+        component="button"
+        type="button"
+        onClick={onOpen}
+        sx={{
+          textAlign: 'left',
+          display: 'flex',
+          gap: 1,
+          alignItems: 'flex-start',
+          width: '100%',
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 2,
+          bgcolor: 'transparent',
+          color: 'text.primary',
+          px: 1.25,
+          py: 0.75,
+          cursor: 'pointer',
+          font: 'inherit',
+          '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' },
+        }}
+      >
+        <Box sx={{ fontWeight: 700, fontSize: 12, color: 'primary.main', minWidth: 20 }}>[{src.ref}]</Box>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.4 }}>
+            {src.documentTitle}
+            {requisites && (
+              <Typography component="span" variant="body2" color="text.secondary">
+                {' '}
+                {requisites}
+              </Typography>
+            )}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            {[src.sectionNumber ? `п. ${src.sectionNumber}` : '', src.heading ?? ''].filter(Boolean).join(' · ')}
+          </Typography>
+        </Box>
+      </Box>
+    </Tooltip>
+  )
+}
+
+const MODE_LABEL: Record<string, string> = {
+  hybrid: 'гибридный поиск BM25 + векторы',
+  bm25: 'лексический поиск BM25',
+  vector: 'векторный поиск',
+}
+
+function TraceLine({ trace }: { trace: AnswerTrace }) {
+  const parts = [
+    MODE_LABEL[trace.mode] ?? trace.mode,
+    trace.reranked ? 'LLM-реранкинг' : '',
+    trace.amendments && trace.amendments.length > 0 ? `учтены изменяющие акты: ${trace.amendments.length}` : '',
+    trace.model ? trace.model : '',
+    `${(trace.latencyMs / 1000).toFixed(1)} с`,
+  ].filter(Boolean)
+  return (
+    <Tooltip title={trace.amendments?.join('; ') ?? ''} arrow>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.25, opacity: 0.8 }}>
+        Как найден ответ: {parts.join(' · ')}
+      </Typography>
+    </Tooltip>
   )
 }

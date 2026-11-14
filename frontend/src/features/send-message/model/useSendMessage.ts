@@ -49,6 +49,12 @@ export function useSendMessage() {
         text: resp.answer,
         sources: (resp.sources ?? []).map(toSourceReference),
         status: deriveAnswerStatus(resp),
+        summary: resp.summary,
+        steps: resp.steps,
+        notes: resp.notes,
+        conflicts: resp.conflicts,
+        missing: resp.missing,
+        trace: resp.trace,
         stub: resp.stub ?? false,
         pending: false,
       })

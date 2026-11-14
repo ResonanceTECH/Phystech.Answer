@@ -39,25 +39,30 @@ func (s *Server) Handler() http.Handler {
 	// The Go backend proxies POST {ML_SERVICE_URL}/ask; keep both aliases.
 	mux.HandleFunc("POST /api/ask", s.ask)
 	mux.HandleFunc("POST /ask", s.ask)
+	mux.HandleFunc("POST /api/retrieve", s.retrieve)
 
 	return s.cors(s.recoverer(s.logging(mux)))
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	docs, chunks := s.rag.Stats()
+	withVec, _ := s.rag.Store().VectorCoverage()
+	o := s.rag.Options()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":    "ok",
-		"documents": docs,
-		"chunks":    chunks,
+		"status":     "ok",
+		"documents":  docs,
+		"chunks":     chunks,
+		"vectors":    withVec,
+		"embeddings": s.rag.HasEmbedder(),
+		"llm":        s.rag.HasChat(),
+		"mode":       o.Mode,
+		"reranker":   o.Reranker,
+		"decider":    s.rag.HasDecider(),
+		"amendments": o.Amendments,
 	})
 }
 
-type documentRequest struct {
-	ID      string   `json:"id"`
-	Title   string   `json:"title"`
-	Content string   `json:"content"`
-	Tags    []string `json:"tags"`
-}
+type documentRequest = model.Document
 
 func (s *Server) listDocuments(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.rag.ListDocuments())
@@ -84,8 +89,7 @@ func (s *Server) upsertDocument(w http.ResponseWriter, r *http.Request) {
 		req.ID = "doc_" + req.Title // fallback; backend always sends an ID
 	}
 
-	doc := model.Document{ID: req.ID, Title: req.Title, Content: req.Content, Tags: req.Tags}
-	if err := s.rag.IndexDocument(r.Context(), doc); err != nil {
+	if err := s.rag.IndexDocument(r.Context(), req); err != nil {
 		log.Printf("index document %s: %v", req.ID, err)
 		writeError(w, http.StatusInternalServerError, "failed to index document")
 		return
@@ -129,6 +133,78 @@ func (s *Server) syncDocuments(w http.ResponseWriter, r *http.Request) {
 type askRequest struct {
 	Question string `json:"question"`
 	UserID   string `json:"userId,omitempty"`
+	// Options override the pipeline configuration (evaluation / ablation).
+	Options *optionsOverride `json:"options,omitempty"`
+}
+
+type optionsOverride struct {
+	Mode       *string `json:"mode,omitempty"`
+	Rerank     *bool   `json:"rerank,omitempty"`   // legacy: true → llm
+	Reranker   *string `json:"reranker,omitempty"` // off | llm | decision
+	Amendments *bool   `json:"amendments,omitempty"`
+	Decompose  *bool   `json:"decompose,omitempty"`
+	TopK       *int    `json:"topK,omitempty"`
+}
+
+func (s *Server) options(o *optionsOverride) rag.Options {
+	opts := s.rag.Options()
+	if o == nil {
+		return opts
+	}
+	if o.Mode != nil {
+		opts.Mode = *o.Mode
+	}
+	if o.Rerank != nil {
+		opts.Reranker = map[bool]string{true: "llm", false: ""}[*o.Rerank]
+	}
+	if o.Reranker != nil {
+		opts.Reranker = *o.Reranker
+		if opts.Reranker == "off" {
+			opts.Reranker = ""
+		}
+	}
+	if o.Amendments != nil {
+		opts.Amendments = *o.Amendments
+	}
+	if o.Decompose != nil {
+		opts.Decompose = *o.Decompose
+	}
+	if o.TopK != nil {
+		opts.TopK = *o.TopK
+	}
+	return opts
+}
+
+type retrievedChunk struct {
+	DocumentID string  `json:"documentId"`
+	Title      string  `json:"title"`
+	Number     string  `json:"number,omitempty"`
+	Date       string  `json:"date,omitempty"`
+	Section    string  `json:"section,omitempty"`
+	Heading    string  `json:"heading,omitempty"`
+	Score      float64 `json:"score"`
+	Text       string  `json:"text"`
+}
+
+// retrieve runs retrieval only (no generation) — for evaluation and the
+// "how the answer was found" view.
+func (s *Server) retrieve(w http.ResponseWriter, r *http.Request) {
+	var req askRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.Question) == "" {
+		writeError(w, http.StatusBadRequest, "question is required")
+		return
+	}
+	trace := &model.Trace{}
+	chunks, gate := s.rag.Retrieve(r.Context(), strings.TrimSpace(req.Question), s.options(req.Options), trace)
+	out := make([]retrievedChunk, 0, len(chunks))
+	for _, sc := range chunks {
+		c := sc.Chunk
+		out = append(out, retrievedChunk{c.DocID, c.DocTitle, c.DocNumber, c.DocDate, c.Section, c.Heading, sc.Score, c.Text})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chunks": out, "evidence": gate, "trace": trace})
 }
 
 func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +212,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	resp, err := s.rag.Ask(r.Context(), req.Question)
+	resp, err := s.rag.AskWith(r.Context(), req.Question, s.options(req.Options))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

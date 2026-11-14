@@ -2,6 +2,7 @@
 // собираются URL приложения.
 export const paths = {
   home: '/',
+  login: '/login',
   app: {
     root: '/app',
     home: '/app',
@@ -10,6 +11,7 @@ export const paths = {
     documents: '/app/documents',
     document: (id: string) => `/app/documents/${id}`,
     instructions: '/app/instructions',
+    onboarding: '/app/onboarding',
   },
   admin: {
     root: '/admin',

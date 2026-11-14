@@ -18,6 +18,14 @@ describe('deriveAnswerStatus', () => {
     ).toBe('not_found')
   })
 
+  it('status из ответа ML имеет приоритет', () => {
+    expect(deriveAnswerStatus({ ...base, status: 'not_found' })).toBe('not_found')
+    expect(deriveAnswerStatus({ ...base, status: 'invalid' })).toBe('clarification_required')
+    expect(
+      deriveAnswerStatus({ ...base, status: 'answered', conflicts: [{ description: 'x', refs: [1] }] }),
+    ).toBe('conflict')
+  })
+
   it('error для stub-ответа ML-фолбэка', () => {
     expect(deriveAnswerStatus({ ...base, stub: true })).toBe('error')
   })

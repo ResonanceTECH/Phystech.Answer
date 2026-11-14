@@ -1,15 +1,21 @@
 package httpapi
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"phystech-answer/backend/internal/docmeta"
 	"phystech-answer/backend/internal/jobs"
 	"phystech-answer/backend/internal/model"
 	"phystech-answer/backend/internal/parse"
@@ -19,13 +25,13 @@ import (
 const maxUploadBytes = 64 << 20 // 64 MiB per request
 
 type uploadResult struct {
-	Filename     string `json:"filename"`
-	Status       string `json:"status"` // queued|duplicate|rejected
-	FileID       string `json:"fileId,omitempty"`
-	DocumentID   string `json:"documentId,omitempty"`
-	VersionID    string `json:"versionId,omitempty"`
-	JobID        string `json:"jobId,omitempty"`
-	Error        string `json:"error,omitempty"`
+	Filename   string `json:"filename"`
+	Status     string `json:"status"` // queued|duplicate|rejected
+	FileID     string `json:"fileId,omitempty"`
+	DocumentID string `json:"documentId,omitempty"`
+	VersionID  string `json:"versionId,omitempty"`
+	JobID      string `json:"jobId,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // uploadDocuments accepts multipart files (field "files" or "file"),
@@ -65,31 +71,44 @@ func (s *Server) uploadDocuments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) processUpload(r *http.Request, user model.User, filename string, open func() (io.ReadCloser, error), titleOverride string, tags []string, category, docType, docNumber string) uploadResult {
+	rc, err := open()
+	if err != nil {
+		return uploadResult{Filename: filename, Status: "rejected", Error: "cannot read file"}
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(io.LimitReader(rc, maxUploadBytes))
+	if err != nil {
+		return uploadResult{Filename: filename, Status: "rejected", Error: "cannot read file"}
+	}
+	return s.ingestFile(r.Context(), user.ID, filename, data, ingestOptions{
+		Title: titleOverride, Tags: tags, Category: category, DocType: docType, DocNumber: docNumber,
+	})
+}
+
+type ingestOptions struct {
+	Title, Category, DocType, DocNumber string
+	Tags                                []string
+}
+
+// ingestFile stores a file, creates the document card and enqueues parsing.
+// Shared by the admin upload endpoint and the startup directory import, so
+// new documents go through exactly the same pipeline.
+func (s *Server) ingestFile(ctx context.Context, uploaderID, filename string, data []byte, opt ingestOptions) uploadResult {
 	res := uploadResult{Filename: filename}
-	ctx := r.Context()
 
 	if !parse.Supported(parse.DetectByName(filename)) {
 		res.Status = "rejected"
 		res.Error = "unsupported file type"
 		return res
 	}
-
-	rc, err := open()
-	if err != nil {
+	if len(data) == 0 {
 		res.Status = "rejected"
-		res.Error = "cannot read file"
+		res.Error = "empty file"
 		return res
 	}
-	defer rc.Close()
 
-	h := sha256.New()
-	data, err := io.ReadAll(io.TeeReader(io.LimitReader(rc, maxUploadBytes), h))
-	if err != nil {
-		res.Status = "rejected"
-		res.Error = "cannot read file"
-		return res
-	}
-	sum := hex.EncodeToString(h.Sum(nil))
+	sumBytes := sha256.Sum256(data)
+	sum := hex.EncodeToString(sumBytes[:])
 
 	// Дубликат по контрольной сумме.
 	if existing, err := s.store.GetSourceFileBySHA(ctx, sum); err == nil {
@@ -110,7 +129,7 @@ func (s *Server) processUpload(r *http.Request, user model.User, filename string
 		MimeType:         mimeByExt(filename),
 		SizeBytes:        int64(len(data)),
 		SHA256:           sum,
-		UploadedBy:       user.ID,
+		UploadedBy:       uploaderID,
 	})
 	if err != nil {
 		res.Status = "rejected"
@@ -119,22 +138,21 @@ func (s *Server) processUpload(r *http.Request, user model.User, filename string
 	}
 	res.FileID = fileRec.ID
 
-	if err := s.fs.Save(ctx, storageKey, strings.NewReader(string(data))); err != nil {
+	if err := s.fs.Save(ctx, storageKey, bytes.NewReader(data)); err != nil {
 		res.Status = "rejected"
 		res.Error = "failed to store file"
 		return res
 	}
 
-	title := titleOverride
-	if title == "" {
-		title = strings.TrimSuffix(filename, filenameExt(filename))
-	}
+	meta := docmeta.FromFilename(filename)
+	title := firstNonEmpty(opt.Title, meta.Title)
 	doc, err := s.store.CreateDocument(ctx, model.Document{
 		Title:          title,
-		DocumentNumber: docNumber,
-		DocumentType:   docType,
-		Category:       category,
-		Tags:           tags,
+		DocumentNumber: firstNonEmpty(opt.DocNumber, meta.Number),
+		DocumentType:   firstNonEmpty(opt.DocType, meta.Type),
+		DocumentDate:   meta.Date,
+		Category:       opt.Category,
+		Tags:           opt.Tags,
 		SourceFileID:   fileRec.ID,
 	})
 	if err != nil {
@@ -176,6 +194,49 @@ func (s *Server) processUpload(r *http.Request, user model.User, filename string
 	res.JobID = job.ID
 	res.Status = "queued"
 	return res
+}
+
+// ImportDirectory ingests every supported file from dir (non-recursive).
+// Already imported files are skipped by checksum, so it is safe to run on
+// every start: dropping a new file into the folder and restarting is
+// enough to extend the knowledge base.
+func (s *Server) ImportDirectory(ctx context.Context, dir string) {
+	if dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		log.Printf("import: read %s: %v", dir, err)
+		return
+	}
+	counts := map[string]int{}
+	for _, e := range entries {
+		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			log.Printf("import: %s: %v", e.Name(), err)
+			counts["rejected"]++
+			continue
+		}
+		res := s.ingestFile(ctx, "", e.Name(), data, ingestOptions{})
+		counts[res.Status]++
+		if res.Status == "rejected" {
+			log.Printf("import: %s rejected: %s", e.Name(), res.Error)
+		}
+	}
+	log.Printf("import: %s → queued %d, duplicate %d, rejected %d",
+		dir, counts["queued"], counts["duplicate"], counts["rejected"])
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func splitCSV(s string) []string {

@@ -35,7 +35,7 @@ func isUniqueViolation(err error) bool {
 
 const documentProjection = `
 SELECT d.id, d.title, d.document_number, d.document_type, d.category,
-       d.access_level, d.tags, d.created_at, d.updated_at,
+       d.document_date, d.access_level, d.tags, d.created_at, d.updated_at,
        COALESCE(v.version_number, 0), COALESCE(v.content, ''),
        COALESCE(v.legal_status, ''), COALESCE(v.processing_status, '')
 FROM documents d
@@ -51,7 +51,7 @@ func scanDocument(row pgx.Row) (model.Document, error) {
 	var d model.Document
 	var num, typ, cat, access, legal, proc *string
 	err := row.Scan(&d.ID, &d.Title, &num, &typ, &cat,
-		&access, &d.Tags, &d.CreatedAt, &d.UpdatedAt,
+		&d.DocumentDate, &access, &d.Tags, &d.CreatedAt, &d.UpdatedAt,
 		&d.Version, &d.Content, &legal, &proc)
 	if err != nil {
 		return model.Document{}, err
@@ -116,10 +116,10 @@ func (p *Postgres) CreateDocument(ctx context.Context, doc model.Document) (mode
 		doc.Tags = []string{}
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO documents
-		(id, title, document_number, document_type, category, access_level, tags, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		(id, title, document_number, document_type, category, access_level, tags, created_at, updated_at, document_date)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 		doc.ID, doc.Title, doc.DocumentNumber, doc.DocumentType, doc.Category,
-		defaultStr(doc.AccessLevel, "internal"), doc.Tags, now, now)
+		defaultStr(doc.AccessLevel, "internal"), doc.Tags, now, now, doc.DocumentDate)
 	if err != nil {
 		return model.Document{}, err
 	}
@@ -370,6 +370,18 @@ func (p *Postgres) ListChunks(ctx context.Context, versionID string) ([]model.Ch
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// UpdateDocumentMeta fills normative metadata detected while parsing.
+// Empty values do not overwrite existing ones.
+func (p *Postgres) UpdateDocumentMeta(ctx context.Context, id, number, docType string, date *time.Time) error {
+	_, err := p.pool.Exec(ctx, `UPDATE documents SET
+		document_number = CASE WHEN $2 <> '' THEN $2 ELSE document_number END,
+		document_type   = CASE WHEN $3 <> '' THEN $3 ELSE document_type END,
+		document_date   = COALESCE($4, document_date),
+		updated_at = now()
+		WHERE id = $1`, id, number, docType, date)
+	return err
 }
 
 func (p *Postgres) SetVersionContent(ctx context.Context, versionID, content string) error {

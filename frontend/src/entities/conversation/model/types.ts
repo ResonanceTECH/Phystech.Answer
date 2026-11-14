@@ -1,5 +1,5 @@
 import type { SourceReference } from '@/entities/source-reference'
-import type { AnswerStatus } from '@/entities/answer'
+import type { AnswerConflict, AnswerStatus, AnswerStep, AnswerTrace } from '@/entities/answer'
 
 export interface Conversation {
   id: string
@@ -15,6 +15,12 @@ export interface ChatMessage {
   text: string
   sources?: SourceReference[]
   status?: AnswerStatus
+  summary?: string
+  steps?: AnswerStep[]
+  notes?: string[]
+  conflicts?: AnswerConflict[]
+  missing?: string
+  trace?: AnswerTrace
   stub?: boolean
   pending?: boolean
   createdAt: number

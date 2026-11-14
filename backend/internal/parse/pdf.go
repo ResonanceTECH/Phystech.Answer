@@ -5,6 +5,7 @@ import (
 	"compress/flate"
 	"compress/zlib"
 	"io"
+	"log"
 	"regexp"
 	"strings"
 )
@@ -14,12 +15,20 @@ import (
 // operands. Scanned PDFs (image-only) yield no text and surface as
 // ErrNoText so the pipeline can route them to OCR / requires_review.
 func extractPDF(data []byte) (string, error) {
+	if popplerAvailable {
+		text, st, err := extractPDFPoppler(data)
+		if err == nil {
+			log.Printf("parse: pdf %d pages, %d via OCR (%s)", st.Pages, st.OCRPages, st.Engine)
+			return text, nil
+		}
+		log.Printf("parse: poppler failed (%v), using built-in parser", err)
+	}
 	var b strings.Builder
 	for _, stream := range pdfStreams(data) {
 		extractStreamText(stream, &b)
 	}
 	text := strings.TrimSpace(cleanText(b.String()))
-	if text == "" {
+	if !usableText(text) {
 		return "", ErrNoText
 	}
 	return text, nil

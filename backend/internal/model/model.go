@@ -8,21 +8,22 @@ import (
 // Document is the API-facing regulation card. Content/Version are projected
 // from the current published DocumentVersion to keep the frontend contract.
 type Document struct {
-	ID             string    `json:"id"`
-	Title          string    `json:"title"`
-	Content        string    `json:"content"`
-	Tags           []string  `json:"tags"`
-	Version        int       `json:"version"`
-	DocumentNumber string    `json:"documentNumber,omitempty"`
-	DocumentType   string    `json:"documentType,omitempty"`
-	Category       string    `json:"category,omitempty"`
-	AccessLevel    string    `json:"accessLevel,omitempty"`
-	LegalStatus    string    `json:"legalStatus,omitempty"`
-	Processing     string    `json:"processingStatus,omitempty"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	ID             string     `json:"id"`
+	Title          string     `json:"title"`
+	Content        string     `json:"content"`
+	Tags           []string   `json:"tags"`
+	Version        int        `json:"version"`
+	DocumentNumber string     `json:"documentNumber,omitempty"`
+	DocumentType   string     `json:"documentType,omitempty"`
+	DocumentDate   *time.Time `json:"documentDate,omitempty"`
+	Category       string     `json:"category,omitempty"`
+	AccessLevel    string     `json:"accessLevel,omitempty"`
+	LegalStatus    string     `json:"legalStatus,omitempty"`
+	Processing     string     `json:"processingStatus,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
 	// SourceFileID links the initial version to an uploaded file (input-only).
-	SourceFileID   string    `json:"-"`
+	SourceFileID string `json:"-"`
 }
 
 type User struct {
@@ -133,13 +134,13 @@ type RunEvent struct {
 }
 
 type Answer struct {
-	ID                 string   `json:"id"`
-	RunID              string   `json:"runId"`
-	ConversationID     string   `json:"conversationId,omitempty"`
-	Status             string   `json:"status"` // answered|partial|clarification_required|not_found|conflict|error
-	Summary            string   `json:"summary"`
-	Warnings           []string `json:"warnings"`
-	MissingInformation []string `json:"missing_information"`
+	ID                 string    `json:"id"`
+	RunID              string    `json:"runId"`
+	ConversationID     string    `json:"conversationId,omitempty"`
+	Status             string    `json:"status"` // answered|partial|clarification_required|not_found|conflict|error
+	Summary            string    `json:"summary"`
+	Warnings           []string  `json:"warnings"`
+	MissingInformation []string  `json:"missing_information"`
 	CreatedAt          time.Time `json:"createdAt"`
 }
 
@@ -170,7 +171,7 @@ type Citation struct {
 	Score             float64 `json:"score"`
 	// StepOrder is an input-only field: on CreateAnswer it binds the
 	// citation to the step with this Order (0 = unbound).
-	StepOrder         int     `json:"-"`
+	StepOrder int `json:"-"`
 }
 
 // SearchHit is one chunk-level result of hybrid/fulltext search.

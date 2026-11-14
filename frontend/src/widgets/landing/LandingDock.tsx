@@ -58,7 +58,8 @@ export function LandingDock() {
         </nav>
 
         <Link to={landingHero.primaryCta.to} className="pl-dock__cta">
-          Открыть
+          Спросить ассистента
+          <span aria-hidden="true">→</span>
         </Link>
       </div>
     </div>

@@ -14,7 +14,11 @@ import (
 // development. The regulations are synthetic stand-ins for the real MIPT
 // documents and cover the demo scenarios: командировки, ФЛС, заимствование,
 // техподдержка, подбор персонала. Existing content is left untouched.
-func SeedDemo(ctx context.Context, st Store) {
+//
+// Users (admin/expert/employees) are always seeded on an empty database;
+// synthetic documents only when withDocs is true — the real knowledge base
+// is imported from DOCS_DIR instead.
+func SeedDemo(ctx context.Context, st Store, withDocs bool) {
 	users, err := st.ListUsers(ctx)
 	if err != nil {
 		log.Printf("seed: list users: %v", err)
@@ -42,6 +46,10 @@ func SeedDemo(ctx context.Context, st Store) {
 	seedUser(ctx, st, model.User{Name: "Мария Сидорова", Email: "maria.sidorova@example.com", Login: "maria", Role: "employee"}, hash("maria123"))
 	seedUser(ctx, st, model.User{Name: "Администратор", Email: "admin@example.com", Login: "admin", Role: "admin"}, hash("admin123"))
 	seedUser(ctx, st, model.User{Name: "Эксперт Нормативки", Email: "expert@example.com", Login: "expert", Role: "expert"}, hash("expert123"))
+	if !withDocs {
+		log.Printf("seed: demo users created (synthetic documents disabled)")
+		return
+	}
 
 	docs := []model.Document{
 		{

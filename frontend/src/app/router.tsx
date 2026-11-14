@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom'
 import { AdminLayout } from '@/app/layouts/AdminLayout'
 import { AppLayout } from '@/app/layouts/AppLayout'
 import { ChatLayout } from '@/app/layouts/ChatLayout'
+import { RequireAdmin, RequireAuth } from '@/app/router/guards'
 import { paths } from '@/app/router/routePaths'
 import { AdminDashboardPage } from '@/pages/admin/dashboard/AdminDashboardPage'
 import { AdminDocumentsPage } from '@/pages/admin/documents/AdminDocumentsPage'
@@ -13,13 +14,20 @@ import { DocumentsPage } from '@/pages/documents/DocumentsPage'
 import { HomePage } from '@/pages/home/HomePage'
 import { InstructionsPage } from '@/pages/instructions/InstructionsPage'
 import { LandingPage } from '@/pages/landing/LandingPage'
+import { LoginPage } from '@/pages/login/LoginPage'
+import { OnboardingPage } from '@/pages/onboarding/OnboardingPage'
 import { NotFoundPage } from '@/pages/not-found/NotFoundPage'
 
 export const router = createBrowserRouter([
   {
-    element: <AppLayout />,
+    element: (
+      <RequireAuth>
+        <AppLayout />
+      </RequireAuth>
+    ),
     children: [
       { path: paths.app.home, element: <HomePage /> },
+      { path: paths.app.onboarding, element: <OnboardingPage /> },
       { path: paths.app.documents, element: <DocumentsPage /> },
       { path: paths.app.document(':documentId'), element: <DocumentDetailsPage /> },
       { path: paths.app.instructions, element: <InstructionsPage /> },
@@ -38,20 +46,16 @@ export const router = createBrowserRouter([
   },
   {
     path: paths.admin.root,
-    element: <AdminLayout />,
+    element: (
+      <RequireAdmin>
+        <AdminLayout />
+      </RequireAdmin>
+    ),
     children: [
       { index: true, element: <AdminDashboardPage /> },
       { path: 'documents', element: <AdminDocumentsPage /> },
       { path: 'documents/upload', element: <DocumentUploadPage /> },
-      {
-        path: 'processing',
-        element: (
-          <AdminStubPage
-            title="Обработка документов"
-            description="Очередь индексации и статус обработки появится после подключения фоновых задач на backend."
-          />
-        ),
-      },
+      { path: 'processing', element: <DocumentUploadPage /> },
       {
         path: 'versions',
         element: (
@@ -82,4 +86,5 @@ export const router = createBrowserRouter([
     ],
   },
   { path: paths.home, element: <LandingPage /> },
+  { path: paths.login, element: <LoginPage /> },
 ])

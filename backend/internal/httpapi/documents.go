@@ -25,8 +25,16 @@ func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read status: explicit ?userId= or the signed-in user.
+	userID := r.URL.Query().Get("userId")
+	if userID == "" {
+		if u, ok := s.currentUser(r); ok {
+			userID = u.ID
+		}
+	}
+	brief := r.URL.Query().Get("brief") == "1"
 	var reads map[string]time.Time
-	if userID := r.URL.Query().Get("userId"); userID != "" {
+	if userID != "" {
 		if reads, err = s.store.ReadStatus(r.Context(), userID); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to load read status")
 			return
@@ -35,6 +43,9 @@ func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]documentResponse, 0, len(docs))
 	for _, d := range docs {
+		if brief {
+			d.Content = "" // catalog/onboarding lists don't need full texts
+		}
 		item := documentResponse{Document: d}
 		if t, ok := reads[d.ID]; ok {
 			item.Read = true
@@ -52,6 +63,10 @@ type documentRequest struct {
 }
 
 func (s *Server) createDocument(w http.ResponseWriter, r *http.Request) {
+	// Changing the knowledge base is admin/expert-only.
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
 	var req documentRequest
 	if !decodeJSON(w, r, &req) {
 		return
@@ -88,6 +103,10 @@ func (s *Server) getDocument(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateDocument(w http.ResponseWriter, r *http.Request) {
+	// Changing the knowledge base is admin/expert-only.
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
 	var req documentRequest
 	if !decodeJSON(w, r, &req) {
 		return
@@ -116,6 +135,10 @@ func (s *Server) updateDocument(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
+	// Changing the knowledge base is admin/expert-only.
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
 	err := s.store.DeleteDocument(r.Context(), r.PathValue("id"))
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "document not found")
@@ -135,8 +158,13 @@ type markReadRequest struct {
 
 func (s *Server) markRead(w http.ResponseWriter, r *http.Request) {
 	var req markReadRequest
-	if !decodeJSON(w, r, &req) {
+	if r.ContentLength != 0 && !decodeJSON(w, r, &req) {
 		return
+	}
+	if strings.TrimSpace(req.UserID) == "" {
+		if u, ok := s.currentUser(r); ok {
+			req.UserID = u.ID
+		}
 	}
 	if strings.TrimSpace(req.UserID) == "" {
 		writeError(w, http.StatusBadRequest, "userId is required")

@@ -2,6 +2,7 @@ import AddCommentOutlinedIcon from '@mui/icons-material/AddCommentOutlined'
 import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined'
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined'
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder'
+import RouteOutlinedIcon from '@mui/icons-material/RouteOutlined'
 import {
   Box,
   Divider,
@@ -15,6 +16,7 @@ import {
 } from '@mui/material'
 import { NavLink } from 'react-router-dom'
 import { paths } from '@/app/router/routePaths'
+import { canManageDocuments, useSession } from '@/entities/session'
 import { config } from '@/shared/config/env'
 
 export const DRAWER_WIDTH = 248
@@ -26,11 +28,14 @@ interface AppSidebarProps {
 
 const userItems = [
   { label: 'Ассистент', icon: <AddCommentOutlinedIcon />, to: paths.app.chatNew },
+  { label: 'План ознакомления', icon: <RouteOutlinedIcon />, to: paths.app.onboarding },
   { label: 'Документы', icon: <ArticleOutlinedIcon />, to: paths.app.documents },
   { label: 'Инструкции', icon: <BookmarkBorderIcon />, to: paths.app.instructions },
 ]
 
 export function AppSidebar({ mobileOpen, onMobileClose }: AppSidebarProps) {
+  const { user } = useSession()
+  const showAdmin = config.enableAdmin && canManageDocuments(user)
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar sx={{ px: 2 }}>
@@ -58,7 +63,7 @@ export function AppSidebar({ mobileOpen, onMobileClose }: AppSidebarProps) {
           </ListItemButton>
         ))}
       </List>
-      {config.enableAdmin && (
+      {showAdmin && (
         <>
           <Divider />
           <List sx={{ px: 1.5, py: 2 }}>

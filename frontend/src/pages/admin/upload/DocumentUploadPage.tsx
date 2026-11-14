@@ -1,4 +1,10 @@
-import CloudUploadIcon from '@mui/icons-material/CloudUpload'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined'
+import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined'
+import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined'
+import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined'
+import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
 import {
   Alert,
   Box,
@@ -6,163 +12,290 @@ import {
   Chip,
   LinearProgress,
   Paper,
+  Stack,
   Typography,
 } from '@mui/material'
-import { useRef, useState } from 'react'
-import {
-  isSupportedTextFile,
-  readTextFile,
-  titleFromFileName,
-} from '@/features/upload-documents'
-import { useCreateDocument } from '@/entities/document'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { paths } from '@/app/router/routePaths'
+import { formatDocDate } from '@/entities/source-reference'
+import { api, apiErrorMessage, queryKeys } from '@/shared/api'
 import { PageHeader } from '@/shared/ui'
 
-type FileStatus = 'pending' | 'processing' | 'done' | 'error' | 'unsupported'
+// Загрузка документов администратором: файлы уходят на бэкенд, где
+// проходят тот же конвейер, что и база при старте — извлечение текста
+// (PDF/DOCX/XLSX, OCR сканов), реквизиты, разбиение на пункты, индексация.
+// Статус каждой загрузки опрашивается до готовности.
+
+const ACCEPT = '.pdf,.docx,.xlsx,.txt,.md'
+const SUPPORTED = /\.(pdf|docx|xlsx|txt|md)$/i
+const POLL_MS = 1500
+
+type Stage = 'uploading' | 'processing' | 'ready' | 'review' | 'duplicate' | 'rejected'
 
 interface Row {
+  key: string
   name: string
-  status: FileStatus
+  size: number
+  stage: Stage
+  documentId?: string
+  versionId?: string
   message?: string
+  meta?: { type?: string; number?: string; date?: string; sections?: number; chars?: number }
 }
 
-// Загрузка документов из текстовых файлов (.txt/.md). PDF/DOCX —
-// заглушка: backend пока не умеет их парсить, показываем честный статус.
+interface UploadResult {
+  filename: string
+  status: 'queued' | 'duplicate' | 'rejected'
+  documentId?: string
+  versionId?: string
+  error?: string
+}
+
+interface VersionInfo {
+  id: string
+  processingStatus: string
+  processingError?: string
+  content?: string
+}
+
+interface DocInfo {
+  documentType?: string
+  documentNumber?: string
+  documentDate?: string
+}
+
+const STAGE_VIEW: Record<Stage, { label: string; color: 'default' | 'info' | 'success' | 'warning' | 'error' }> = {
+  uploading: { label: 'Загрузка', color: 'info' },
+  processing: { label: 'Извлечение текста · OCR · индексация', color: 'info' },
+  ready: { label: 'Готов — доступен ассистенту', color: 'success' },
+  review: { label: 'Требует проверки', color: 'warning' },
+  duplicate: { label: 'Уже в базе', color: 'default' },
+  rejected: { label: 'Отклонён', color: 'error' },
+}
+
+function fmtSize(b: number) {
+  return b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} МБ` : `${Math.max(1, Math.round(b / 1024))} КБ`
+}
+
 export function DocumentUploadPage() {
   const inputRef = useRef<HTMLInputElement>(null)
-  const createMutation = useCreateDocument()
   const [rows, setRows] = useState<Row[]>([])
   const [dragOver, setDragOver] = useState(false)
+  const [error, setError] = useState('')
+  const qc = useQueryClient()
+  const navigate = useNavigate()
 
-  const updateRow = (name: string, patch: Partial<Row>) =>
-    setRows((prev) => prev.map((r) => (r.name === name ? { ...r, ...patch } : r)))
+  const patch = (key: string, p: Partial<Row>) =>
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...p } : r)))
 
-  const processFiles = async (files: File[]) => {
-    const initial: Row[] = files.map((f) => ({ name: f.name, status: 'pending' }))
-    setRows((prev) => [...prev, ...initial])
+  const upload = async (files: File[]) => {
+    setError('')
+    const batch: Row[] = files.map((f, i) => ({
+      key: `${Date.now()}-${i}-${f.name}`,
+      name: f.name,
+      size: f.size,
+      stage: SUPPORTED.test(f.name) ? 'uploading' : 'rejected',
+      message: SUPPORTED.test(f.name) ? undefined : 'Формат не поддерживается: PDF, DOCX, XLSX, TXT',
+    }))
+    setRows((prev) => [...batch, ...prev])
 
-    for (const file of files) {
-      if (!isSupportedTextFile(file)) {
-        updateRow(file.name, {
-          status: 'unsupported',
-          message: 'Формат не поддерживается — загрузите .txt или .md',
-        })
-        continue
+    const valid = files.filter((f) => SUPPORTED.test(f.name))
+    if (valid.length === 0) return
+    const form = new FormData()
+    valid.forEach((f) => form.append('files', f, f.name))
+    try {
+      const resp = await api.postForm<{ results: UploadResult[] }>('/v1/admin/documents/upload', form)
+      for (const res of resp.results) {
+        const row = batch.find((r) => r.name === res.filename && r.stage === 'uploading')
+        if (!row) continue
+        if (res.status === 'queued') {
+          patch(row.key, { stage: 'processing', documentId: res.documentId, versionId: res.versionId })
+        } else if (res.status === 'duplicate') {
+          patch(row.key, { stage: 'duplicate', message: 'Такой файл уже загружен — повторная обработка не нужна' })
+        } else {
+          patch(row.key, { stage: 'rejected', message: res.error ?? 'Файл отклонён' })
+        }
       }
-      updateRow(file.name, { status: 'processing' })
-      try {
-        const content = await readTextFile(file)
-        await createMutation.mutateAsync({
-          title: titleFromFileName(file.name),
-          content,
-          tags: [],
-        })
-        updateRow(file.name, { status: 'done', message: 'Добавлен в базу' })
-      } catch (e) {
-        updateRow(file.name, {
-          status: 'error',
-          message: (e as Error).message,
-        })
-      }
+    } catch (e) {
+      setError(apiErrorMessage(e))
+      batch.forEach((r) => r.stage === 'uploading' && patch(r.key, { stage: 'rejected', message: 'Не удалось загрузить' }))
     }
   }
 
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOver(false)
-    void processFiles(Array.from(e.dataTransfer.files))
+  // Опрос статуса разбора для файлов в обработке.
+  const processing = rows.filter((r) => r.stage === 'processing' && r.documentId)
+  useEffect(() => {
+    if (processing.length === 0) return
+    const timer = setInterval(async () => {
+      for (const r of processing) {
+        try {
+          const versions = await api.get<VersionInfo[]>(`/v1/documents/${r.documentId}/versions`)
+          const v = versions.find((x) => x.id === r.versionId) ?? versions[0]
+          if (!v) continue
+          if (v.processingStatus === 'published') {
+            const [doc, sections] = await Promise.all([
+              api.get<DocInfo>(`/v1/documents/${r.documentId}`),
+              api.get<unknown[]>(`/v1/documents/${r.documentId}/sections`).catch(() => []),
+            ])
+            patch(r.key, {
+              stage: 'ready',
+              meta: {
+                type: doc.documentType,
+                number: doc.documentNumber,
+                date: doc.documentDate,
+                sections: sections.length,
+              },
+            })
+            void qc.invalidateQueries({ queryKey: queryKeys.documents.all })
+          } else if (v.processingStatus === 'requires_review' || v.processingStatus === 'failed') {
+            patch(r.key, { stage: 'review', message: v.processingError || 'Не удалось извлечь текст' })
+          }
+        } catch {
+          /* следующая попытка на следующем тике */
+        }
+      }
+    }, POLL_MS)
+    return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processing.map((r) => r.key).join('|')])
+
+  const onFiles = (list: FileList | null) => {
+    if (list && list.length > 0) void upload(Array.from(list))
   }
 
   return (
-    <Box sx={{ maxWidth: 720 }}>
+    <Stack spacing={3} sx={{ maxWidth: 960 }}>
       <PageHeader
         title="Загрузка документов"
-        subtitle="Массовое добавление регламентов из текстовых файлов."
+        subtitle="Перетащите приказы и регламенты — система сама распознает текст (включая сканы), определит реквизиты и пункты и сразу подключит документ к ассистенту."
       />
 
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Поддерживаются только текстовые файлы (.txt, .md). Загрузка PDF/DOCX
-        появится после подключения парсинга на backend — сейчас такие файлы
-        будут отклонены.
-      </Alert>
-
       <Paper
-        variant="outlined"
+        elevation={0}
         onDragOver={(e) => {
           e.preventDefault()
           setDragOver(true)
         }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={onDrop}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragOver(false)
+          onFiles(e.dataTransfer.files)
+        }}
+        onClick={() => inputRef.current?.click()}
         sx={{
-          p: 5,
+          cursor: 'pointer',
+          p: { xs: 4, md: 6 },
           textAlign: 'center',
-          borderStyle: 'dashed',
-          borderWidth: 2,
+          borderRadius: 4,
+          border: '2px dashed',
           borderColor: dragOver ? 'primary.main' : 'divider',
-          bgcolor: dragOver ? 'action.hover' : 'transparent',
-          transition: 'all .15s',
+          bgcolor: dragOver ? 'rgba(139,92,246,0.08)' : 'background.paper',
+          transition: 'all 0.2s ease',
+          '&:hover': { borderColor: 'primary.light', bgcolor: 'rgba(139,92,246,0.04)' },
         }}
       >
-        <CloudUploadIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
-        <Typography variant="body1" gutterBottom>
-          Перетащите файлы сюда
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          или выберите вручную
-        </Typography>
         <input
           ref={inputRef}
           type="file"
+          accept={ACCEPT}
           multiple
-          accept=".txt,.md,text/plain,text/markdown"
           hidden
           onChange={(e) => {
-            void processFiles(Array.from(e.target.files ?? []))
+            onFiles(e.target.files)
             e.target.value = ''
           }}
         />
-        <Button variant="contained" onClick={() => inputRef.current?.click()}>
-          Выбрать файлы
-        </Button>
+        <CloudUploadOutlinedIcon sx={{ fontSize: 56, color: 'primary.main', mb: 1 }} />
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          Перетащите файлы сюда или нажмите, чтобы выбрать
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          PDF (в том числе сканы), DOCX, XLSX, TXT · можно несколько файлов сразу · до 64 МБ
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ justifyContent: 'center', mt: 2, flexWrap: 'wrap', gap: 1 }}>
+          {['OCR сканов', 'Реквизиты: тип, №, дата', 'Разбиение на пункты', 'Повторы отсекаются'].map((t) => (
+            <Chip key={t} size="small" label={t} variant="outlined" />
+          ))}
+        </Stack>
       </Paper>
 
+      {error && <Alert severity="error">{error}</Alert>}
+
       {rows.length > 0 && (
-        <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Stack spacing={1.25}>
           {rows.map((r) => (
-            <Paper key={r.name} variant="outlined" sx={{ p: 1.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
-                    {r.name}
-                  </Typography>
-                  {r.status === 'processing' && <LinearProgress sx={{ mt: 1 }} />}
-                  {r.message && (
-                    <Typography variant="caption" color={r.status === 'error' ? 'error' : 'text.secondary'}>
-                      {r.message}
-                    </Typography>
-                  )}
-                </Box>
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={
-                    r.status === 'done'
-                      ? 'Готово'
-                      : r.status === 'processing'
-                        ? 'Загрузка…'
-                        : r.status === 'unsupported'
-                          ? 'Не поддерживается'
-                          : r.status === 'error'
-                            ? 'Ошибка'
-                            : 'В очереди'
-                  }
-                  color={r.status === 'done' ? 'success' : r.status === 'error' ? 'error' : 'default'}
-                />
-              </Box>
-            </Paper>
+            <UploadRow
+              key={r.key}
+              row={r}
+              onAsk={() =>
+                navigate(paths.app.chatNew, {
+                  state: { question: `Кратко: что устанавливает документ «${r.name.replace(/\.[^.]+$/, '')}»? Какие действия и сроки?` },
+                })
+              }
+            />
           ))}
-        </Box>
+        </Stack>
       )}
-    </Box>
+    </Stack>
+  )
+}
+
+function UploadRow({ row, onAsk }: { row: Row; onAsk: () => void }) {
+  const view = STAGE_VIEW[row.stage]
+  const icon =
+    row.stage === 'ready' ? (
+      <CheckCircleIcon color="success" />
+    ) : row.stage === 'review' ? (
+      <ReportProblemOutlinedIcon color="warning" />
+    ) : row.stage === 'rejected' ? (
+      <ErrorOutlineIcon color="error" />
+    ) : row.stage === 'duplicate' ? (
+      <ContentCopyOutlinedIcon color="disabled" />
+    ) : (
+      <InsertDriveFileOutlinedIcon color="primary" />
+    )
+  const busy = row.stage === 'uploading' || row.stage === 'processing'
+  const meta = row.meta
+  const facts = meta
+    ? [
+        meta.type,
+        meta.number ? `№ ${meta.number}` : '',
+        meta.date ? `от ${formatDocDate(meta.date)}` : '',
+        meta.sections ? `${meta.sections} пунктов` : '',
+      ].filter(Boolean)
+    : []
+
+  return (
+    <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+        {icon}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={row.name}>
+            {row.name}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {fmtSize(row.size)}
+            {row.message ? ` · ${row.message}` : ''}
+          </Typography>
+          {facts.length > 0 && (
+            <Stack direction="row" spacing={0.75} sx={{ mt: 0.75, flexWrap: 'wrap', gap: 0.75 }}>
+              {facts.map((f) => (
+                <Chip key={f} size="small" label={f} color="primary" variant="outlined" sx={{ height: 22 }} />
+              ))}
+            </Stack>
+          )}
+        </Box>
+        <Chip size="small" color={view.color} label={view.label} sx={{ fontWeight: 600 }} />
+        {row.stage === 'ready' && (
+          <Button size="small" startIcon={<ForumOutlinedIcon />} onClick={onAsk}>
+            Спросить
+          </Button>
+        )}
+      </Stack>
+      {busy && <LinearProgress sx={{ mt: 1.5, borderRadius: 2 }} />}
+    </Paper>
   )
 }

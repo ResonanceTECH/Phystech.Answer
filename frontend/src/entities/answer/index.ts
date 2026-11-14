@@ -1,2 +1,8 @@
-export type { AskResponse, AnswerStatus } from './model/types'
+export type {
+  AskResponse,
+  AnswerStatus,
+  AnswerStep,
+  AnswerConflict,
+  AnswerTrace,
+} from './model/types'
 export { deriveAnswerStatus } from './model/types'

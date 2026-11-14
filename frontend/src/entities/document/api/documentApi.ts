@@ -6,6 +6,15 @@ export function listDocuments(userId?: string): Promise<Document[]> {
   return api.get<Document[]>(`/documents${qs}`)
 }
 
+/** Каталог без полных текстов; статус прочтения — для текущего пользователя. */
+export function listDocumentsBrief(): Promise<Document[]> {
+  return api.get<Document[]>('/v1/documents?brief=1')
+}
+
+export function markDocumentRead(id: string): Promise<{ readAt: string }> {
+  return api.post<{ readAt: string }>(`/v1/documents/${id}/read`)
+}
+
 export function getDocument(id: string): Promise<Document> {
   return api.get<Document>(`/documents/${id}`)
 }

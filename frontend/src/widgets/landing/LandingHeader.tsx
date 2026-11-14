@@ -1,12 +1,17 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { landingHero, landingNav } from '@/entities/landing/content'
+import { useSession } from '@/entities/session'
 import { cn } from '@/shared/lib/cn'
 import { getActiveSectionId, scrollToHash } from '@/shared/lib/scroll'
 
 const SECTION_IDS = landingNav.map((item) => item.id)
 
 export function LandingHeader() {
+  const { user } = useSession()
+  const account = user
+    ? { to: '/app/onboarding', label: 'Мой кабинет' }
+    : { to: '/login', label: 'Войти' }
   const [scrolled, setScrolled] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -88,8 +93,8 @@ export function LandingHeader() {
         </nav>
 
         <div className="pl-header__actions">
-          <Link to="/app/documents" className="pl-btn pl-btn--ghost pl-header__ghost">
-            Документы
+          <Link to={account.to} className="pl-btn pl-btn--ghost pl-header__ghost pl-header__login">
+            {account.label}
           </Link>
           <Link to={landingHero.primaryCta.to} className="pl-btn pl-btn--primary">
             {landingHero.primaryCta.label}
@@ -150,11 +155,11 @@ export function LandingHeader() {
           </nav>
           <div className="pl-mobile-menu__cta">
             <Link
-              to="/app/documents"
-              className="pl-btn pl-btn--ghost"
+              to={account.to}
+              className="pl-btn pl-btn--ghost pl-header__login"
               onClick={() => setMenuOpen(false)}
             >
-              Документы
+              {account.label}
             </Link>
             <Link
               to={landingHero.primaryCta.to}

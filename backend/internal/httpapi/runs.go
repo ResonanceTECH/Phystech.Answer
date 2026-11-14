@@ -143,13 +143,13 @@ func (s *Server) getRunAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"answer_id":       answer.ID,
-		"conversation_id": answer.ConversationID,
-		"status":          answer.Status,
-		"summary":         answer.Summary,
-		"steps":           steps,
-		"sources":         citations,
-		"warnings":        answer.Warnings,
+		"answer_id":           answer.ID,
+		"conversation_id":     answer.ConversationID,
+		"status":              answer.Status,
+		"summary":             answer.Summary,
+		"steps":               steps,
+		"sources":             citations,
+		"warnings":            answer.Warnings,
 		"missing_information": answer.MissingInformation,
 	})
 }

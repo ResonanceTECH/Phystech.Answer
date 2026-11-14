@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -13,10 +15,11 @@ type askRequest struct {
 }
 
 type askResponse struct {
-	Answer  string             `json:"answer"`
-	Sources []mlclient.Source  `json:"sources"`
+	Answer  string            `json:"answer"`
+	Sources []mlclient.Source `json:"sources"`
 	// Stub is true when the ML service was unreachable and the answer is a fallback.
-	Stub bool `json:"stub,omitempty"`
+	Stub   bool   `json:"stub,omitempty"`
+	Status string `json:"status,omitempty"`
 }
 
 // ask forwards the question to the ML service synchronously — the legacy
@@ -37,22 +40,23 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 		s.writeStubAnswer(w)
 		return
 	}
-	res, err := s.ml.Ask(r.Context(), question)
+	body, _ := json.Marshal(map[string]string{"question": question})
+	raw, err := s.ml.AskRaw(r.Context(), body)
 	if err != nil {
+		log.Printf("ask: ML unavailable: %v", err)
 		s.writeStubAnswer(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, askResponse{
-		Answer:  res.Answer,
-		Sources: res.Sources,
-		Stub:    res.Stub,
-	})
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(raw)
 }
 
 func (s *Server) writeStubAnswer(w http.ResponseWriter) {
 	writeJSON(w, http.StatusOK, askResponse{
-		Answer:  "ML-сервис пока недоступен, это ответ-заглушка.",
+		Answer:  "Сервис поиска по документам временно недоступен. Попробуйте повторить запрос через минуту.",
 		Sources: []mlclient.Source{},
 		Stub:    true,
+		Status:  "error",
 	})
 }

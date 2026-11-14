@@ -12,7 +12,6 @@ import {
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined'
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined'
-import SyncOutlinedIcon from '@mui/icons-material/SyncOutlined'
 import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
 import CompareArrowsOutlinedIcon from '@mui/icons-material/CompareArrowsOutlined'
 import AnalyticsOutlinedIcon from '@mui/icons-material/AnalyticsOutlined'
@@ -31,7 +30,6 @@ const adminItems = [
   { label: 'Обзор', icon: <DashboardOutlinedIcon />, to: paths.admin.dashboard, end: true },
   { label: 'Документы', icon: <ArticleOutlinedIcon />, to: paths.admin.documents },
   { label: 'Загрузка', icon: <UploadFileOutlinedIcon />, to: paths.admin.upload },
-  { label: 'Обработка', icon: <SyncOutlinedIcon />, to: paths.admin.processing },
   { label: 'Редакции', icon: <HistoryOutlinedIcon />, to: paths.admin.versions },
   { label: 'Противоречия', icon: <CompareArrowsOutlinedIcon />, to: paths.admin.conflicts },
   { label: 'Аналитика', icon: <AnalyticsOutlinedIcon />, to: paths.admin.analytics },

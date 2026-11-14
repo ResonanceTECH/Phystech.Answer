@@ -294,6 +294,21 @@ body {
   }
 }
 
+/* «Войти»: светлый контур и текст, чтобы кнопка читалась на тёмном фоне. */
+.pl-header .pl-header__login,
+.pl-mobile-menu .pl-header__login {
+  color: var(--pl-white);
+  border: 1.5px solid var(--pl-violet-bright);
+  background: rgba(167, 139, 250, 0.12);
+  font-weight: 700;
+}
+.pl-header .pl-header__login:hover,
+.pl-mobile-menu .pl-header__login:hover {
+  color: var(--pl-white);
+  background: rgba(167, 139, 250, 0.24);
+  border-color: var(--pl-white);
+}
+
 .pl-burger {
   display: inline-flex;
   align-items: center;
@@ -398,26 +413,32 @@ body {
   background: rgba(255, 255, 255, 0.16);
   color: var(--pl-white);
 }
-.pl-dock__cta {
+.pl-dock .pl-dock__cta {
   display: none;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
+  gap: 0.4rem;
   min-height: 3.25rem;
   border-radius: 999px;
-  background: var(--pl-white);
-  color: #140b28;
-  padding-inline: 1.25rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  box-shadow: var(--pl-shadow-lift);
-  transition: transform 0.25s ease;
+  background: linear-gradient(135deg, var(--pl-violet-bright), var(--pl-violet));
+  color: var(--pl-white);
+  padding-inline: 1.35rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: var(--pl-shadow-violet);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
 }
-.pl-dock__cta:hover {
+.pl-dock .pl-dock__cta:hover,
+.pl-dock .pl-dock__cta:focus-visible {
+  color: var(--pl-white);
   transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow: 0 18px 46px rgba(124, 58, 237, 0.45);
 }
 @media (min-width: 640px) {
-  .pl-dock__cta {
+  .pl-dock .pl-dock__cta {
     display: inline-flex;
   }
 }
@@ -449,16 +470,21 @@ body {
 }
 @media (min-width: 1024px) {
   .pl-hero__grid {
-    grid-template-columns: minmax(0, 0.55fr) minmax(0, 0.45fr);
+    grid-template-columns: minmax(0, 0.6fr) minmax(0, 0.4fr);
     align-items: stretch;
     gap: 2rem;
   }
 }
 
 .pl-hero__title {
-  font-size: clamp(2.4rem, 6.8vw, 5.4rem);
+  /* Размер подобран так, чтобы самое длинное слово («регламенту»)
+     помещалось в колонку целиком: переносы внутри слов запрещены. */
+  font-size: clamp(2rem, 4.9vw, 4.6rem);
   max-width: 46rem;
   margin: 0;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  hyphens: none;
 }
 .pl-hero__line {
   display: block;

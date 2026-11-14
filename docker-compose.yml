@@ -1,0 +1,102 @@
+# Физтех.Ответ — полный стенд одной командой:
+#   cp .env.example .env && docker compose up -d --build
+# UI: http://localhost:3001 · API: http://localhost:8080 · ML: http://localhost:8001
+# Postgres: localhost:5432 / fiztech_answer / fiztech_admin (пароль — DB_PASSWORD из .env)
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: fiztech_answer
+      POSTGRES_USER: fiztech_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    ports: ["${DB_PORT:-5432}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fiztech_admin -d fiztech_answer"]
+      interval: 2s
+      retries: 30
+
+  # Локальные модели: эмбеддинги (bge-m3) и, по умолчанию, генерация.
+  ollama:
+    image: ollama/ollama:latest
+    volumes: [ollama:/root/.ollama]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      retries: 30
+
+  # Однократно скачивает модели в volume ollama и завершается.
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama: { condition: service_healthy }
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "ollama pull ${EMBED_MODEL:-bge-m3} && ollama pull ${LOCAL_LLM_MODEL:-qwen3.5:4b}"]
+    volumes: [ollama:/root/.ollama]
+    restart: "no"
+
+  ml:
+    build: ./ml
+    depends_on:
+      ollama-pull: { condition: service_completed_successfully }
+    environment:
+      PORT: "8000"
+      INDEX_PATH: /data/index.json
+      # Генерация: по умолчанию локальная модель в контейнере ollama.
+      # Для внешнего OpenAI-совместимого API (Ollama Cloud, vLLM, ...) задайте в .env
+      # LLM_BASE_URL / LLM_API_KEY / LLM_MODEL.
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-qwen3.5:4b}
+      # none — отключить «размышления» гибридных моделей (Qwen 3.5): ответ по
+      # найденным фрагментам их не требует, а задержка вырастает в разы.
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT-none}
+      # Эмбеддинги всегда локально (документы не покидают контур).
+      EMBED_BASE_URL: ${EMBED_BASE_URL:-http://ollama:11434/v1}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      RAG_MODE: ${RAG_MODE:-hybrid}
+      # Реранкер: decision — H2O-Lightning-4B (сервис decider), llm — модель генерации, off
+      RAG_RERANK: ${RAG_RERANK:-decision}
+      DECISION_BASE_URL: ${DECISION_BASE_URL:-http://decider:8080}
+      RAG_DECOMPOSE: ${RAG_DECOMPOSE:-true}
+      RAG_AMENDMENTS: ${RAG_AMENDMENTS:-true}
+    ports: ["${ML_PORT:-8001}:8000"]
+    volumes: [mldata:/data]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      interval: 5s
+      retries: 30
+
+  backend:
+    build: ./backend
+    depends_on:
+      db: { condition: service_healthy }
+      ml: { condition: service_healthy }
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgresql://fiztech_admin:${DB_PASSWORD}@db:5432/fiztech_answer
+      ML_SERVICE_URL: http://ml:8000
+      ML_TIMEOUT_SECONDS: "300"
+      STORAGE_PATH: /storage
+      DOCS_DIR: /docs
+      SEED_DEMO_DATA: "false"
+    ports: ["${API_PORT:-8080}:8080"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 5s
+      retries: 30
+    volumes:
+      - storage:/storage
+      - ./ml/data/documents:/docs:ro
+
+  frontend:
+    build: ./frontend
+    depends_on: [backend]
+    ports: ["${FRONTEND_PORT:-3001}:80"]
+
+volumes:
+  ollama:
+  storage:
+  pgdata:
+  mldata:

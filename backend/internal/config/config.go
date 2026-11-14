@@ -14,6 +14,7 @@ type Config struct {
 	MLServiceURL string
 	MLTimeoutSec int
 	SeedDemoData bool
+	DocsDir      string
 
 	DatabaseURL string
 	DBMaxConns  int32
@@ -32,7 +33,8 @@ func Load() Config {
 		CORSOrigin:        getEnv("CORS_ORIGIN", "*"),
 		MLServiceURL:      strings.TrimRight(getEnv("ML_SERVICE_URL", "http://localhost:8000"), "/"),
 		MLTimeoutSec:      getEnvInt("ML_TIMEOUT_SECONDS", 120),
-		SeedDemoData:      getEnv("SEED_DEMO_DATA", "true") != "false",
+		SeedDemoData:      getEnv("SEED_DEMO_DATA", "false") == "true",
+		DocsDir:           getEnv("DOCS_DIR", ""),
 		DatabaseURL:       getEnv("DATABASE_URL", ""),
 		DBMaxConns:        int32(getEnvInt("DB_MAX_CONNS", 10)),
 		StorageDriver:     getEnv("STORAGE_DRIVER", "local"),

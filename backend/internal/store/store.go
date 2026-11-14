@@ -28,6 +28,7 @@ type Store interface {
 	ListChunks(ctx context.Context, versionID string) ([]model.Chunk, error)
 	// SetVersionContent replaces version content and rebuilds sections+chunks.
 	SetVersionContent(ctx context.Context, versionID, content string) error
+	UpdateDocumentMeta(ctx context.Context, id, number, docType string, date *time.Time) error
 	SetVersionStatus(ctx context.Context, versionID, processingStatus, processingError string) error
 
 	// Source files.

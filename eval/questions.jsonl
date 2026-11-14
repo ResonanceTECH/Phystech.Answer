@@ -1,0 +1,39 @@
+{"id": "q01", "question": "Как забронировать Концертный зал МФТИ для проведения мероприятия?", "expect_docs": ["3897-1"], "expect_section": "2.5", "type": "procedure"}
+{"id": "q02", "question": "За какой срок нужно подать служебную записку на бронирование концертного зала?", "expect_docs": ["3897-1"], "expect_section": "2.3", "type": "fact"}
+{"id": "q03", "question": "Когда организатор должен передать презентации и сценарный план мероприятия в концертном зале?", "expect_docs": ["3897-1"], "expect_section": "3.4", "type": "fact"}
+{"id": "q04", "question": "Можно ли приносить еду и напитки в концертный зал?", "expect_docs": ["3897-1"], "expect_section": "4.6", "type": "fact"}
+{"id": "q05", "question": "Как подать обращение в техподдержку, если не работает корпоративная почта?", "expect_docs": ["2993-1"], "expect_section": "2.1", "type": "procedure"}
+{"id": "q06", "question": "Что будет с обращением в техподдержку, если я не подтвержу выполнение работ?", "expect_docs": ["2993-1"], "expect_section": "4.7", "type": "fact"}
+{"id": "q07", "question": "Принимает ли техническая поддержка обращения в выходные и праздники?", "expect_docs": ["2993-1"], "expect_section": "5.2", "type": "fact"}
+{"id": "q08", "question": "Как поселить сотрудника в общежитие МФТИ?", "expect_docs": ["поселения"], "expect_section": "2.7", "type": "procedure"}
+{"id": "q09", "question": "Может ли сотрудник проживать в общежитии вместе с семьёй?", "expect_docs": ["поселения"], "expect_section": "1.4", "type": "fact"}
+{"id": "q10", "question": "Как оформить служебную командировку?", "expect_docs": ["командировании"], "expect_section": "", "type": "procedure"}
+{"id": "q11", "question": "Как получить аванс на командировку?", "expect_docs": ["командировании"], "expect_section": "58", "type": "procedure"}
+{"id": "q12", "question": "Какие документы подтверждают расходы на проезд в командировке?", "expect_docs": ["командировании"], "expect_section": "26", "type": "fact"}
+{"id": "q13", "question": "Что делать, если я заболел во время командировки?", "expect_docs": ["командировании"], "expect_section": "20", "type": "procedure"}
+{"id": "q14", "question": "Как открыть финансовый лицевой счет для научно-исследовательской работы?", "expect_docs": ["3065-1", "460-1"], "expect_section": "", "type": "procedure"}
+{"id": "q15", "question": "Кто и на каком основании присваивает номер финансовому лицевому счету?", "expect_docs": ["700"], "expect_section": "2.2", "type": "fact"}
+{"id": "q16", "question": "Что означают разряды в номере ФЛС?", "expect_docs": ["700"], "expect_section": "", "type": "fact"}
+{"id": "q17", "question": "На какой срок можно получить внутреннее заимствование средств?", "expect_docs": ["5990-1"], "expect_section": "3", "type": "fact"}
+{"id": "q18", "question": "Как оформить заявку на внутреннее заимствование?", "expect_docs": ["5990-1"], "expect_section": "7", "type": "procedure"}
+{"id": "q19", "question": "Что будет, если нарушить срок возврата внутреннего займа?", "expect_docs": ["5990-1"], "expect_section": "11", "type": "fact"}
+{"id": "q20", "question": "Как сформировать, согласовать и утвердить смету проекта?", "expect_docs": ["794-1"], "expect_section": "", "type": "procedure"}
+{"id": "q21", "question": "Как внести корректировку в утверждённую смету?", "expect_docs": ["889-1"], "expect_section": "", "type": "procedure"}
+{"id": "q22", "question": "Как формируется и согласуется информация в системе «Электронный бюджет»?", "expect_docs": ["регламент по ЭБ"], "expect_section": "", "type": "procedure"}
+{"id": "q23", "question": "Как организован поиск и подбор персонала на вакансию?", "expect_docs": ["подбора персонала"], "expect_section": "3", "type": "procedure"}
+{"id": "q24", "question": "Как проходит подбор кандидатов на должности профессорско-преподавательского состава?", "expect_docs": ["подбора персонала"], "expect_section": "4", "type": "procedure"}
+{"id": "q25", "question": "Как получить доступ к сервисам центра обработки данных МФТИ?", "expect_docs": ["1292-1"], "expect_section": "", "type": "procedure"}
+{"id": "q26", "question": "Как формируется бюджет МФТИ на 2026–2028 годы?", "expect_docs": ["3699-1"], "expect_section": "", "type": "procedure"}
+{"id": "q27", "question": "Действует ли ещё приказ № 1465-1 о внутренних заимствованиях?", "expect_docs": ["5990-1"], "expect_section": "1", "type": "version"}
+{"id": "q28", "question": "Какие изменения внёс приказ 460-1 в порядок открытия ФЛС?", "expect_docs": ["460-1"], "expect_section": "", "type": "version"}
+{"id": "q29", "question": "Я еду на конференцию, а после возвращения хочу провести семинар в концертном зале. Что мне нужно оформить?", "expect_docs": ["командировании", "3897-1"], "expect_section": "", "type": "composite"}
+{"id": "q30", "question": "Открываем новый проект НИР: как открыть ФЛС и как будет сформирован его номер?", "expect_docs": ["3065-1", "700"], "expect_section": "", "type": "composite"}
+{"id": "q31", "question": "Сломался ноутбук, куда писать?", "expect_docs": ["2993-1"], "expect_section": "", "type": "paraphrase"}
+{"id": "q32", "question": "Деньги по гранту ещё не пришли, а платить надо уже сейчас. Что можно сделать?", "expect_docs": ["5990-1"], "expect_section": "", "type": "paraphrase"}
+{"id": "q33", "question": "Как оформить ежегодный оплачиваемый отпуск?", "expect_docs": [], "expect_section": "", "type": "not_found"}
+{"id": "q34", "question": "Какой размер стипендии у аспирантов МФТИ?", "expect_docs": [], "expect_section": "", "type": "not_found"}
+{"id": "q35", "question": "Как получить парковочное место на территории кампуса?", "expect_docs": [], "expect_section": "", "type": "not_found"}
+{"id": "q36", "question": "Какой пароль от Wi-Fi в главном корпусе?", "expect_docs": [], "expect_section": "", "type": "not_found"}
+{"id": "q37", "question": "Как записаться в спортзал МФТИ?", "expect_docs": [], "expect_section": "", "type": "not_found"}
+{"id": "q38", "question": "фыва олдж ывап", "expect_docs": [], "expect_section": "", "type": "invalid"}
+{"id": "q39", "question": "???", "expect_docs": [], "expect_section": "", "type": "invalid"}

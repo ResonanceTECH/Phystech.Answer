@@ -1,9 +1,20 @@
-// Package chunk splits regulation documents into searchable fragments.
-// It prefers structural boundaries (numbered пункты, разделы, заголовки)
-// so that each chunk maps to a citable section of the source document.
+// Package chunk splits regulation documents into searchable, citable
+// fragments.
+//
+// Strategy (structure-aware chunking):
+//  1. the text is cut into blocks at numbered пункты ("3.4.", "3.4 ") and
+//     section headings ("3. Порядок оформления", "РЕГЛАМЕНТ …",
+//     "Приложение № 1");
+//  2. consecutive blocks of one section are packed into a chunk of
+//     ~targetRunes, so a chunk is a coherent piece of a procedure rather
+//     than a single sentence;
+//  3. every chunk carries a citation label ("п. 3.1–3.4"), the section
+//     heading and a context header (document, number, date, section) that
+//     is prepended for BM25 and embeddings ("contextual chunk headers").
 package chunk
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
@@ -13,100 +24,184 @@ import (
 )
 
 const (
-	// maxChunkRunes is the target upper bound for a single chunk.
-	maxChunkRunes = 1200
-	// overlapRunes keeps context continuity when a long section is split.
-	overlapRunes = 160
-	// minChunkRunes: pieces smaller than this are merged into a neighbour.
+	targetRunes   = 900  // pack blocks until a chunk reaches this size
+	maxChunkRunes = 1400 // hard upper bound for a chunk
+	overlapRunes  = 160  // overlap when a single oversized block is split
 	minChunkRunes = 200
 )
 
 var (
-	// "3.4.", "3.4 ", "1.2.3" — numeric prefix of a пункт.
-	numPrefix = regexp.MustCompile(`^\s*(\d+(\.\d+)*\.?)`)
-	// "3.4. Текст", "3.4 Текст" — numbered пункты of Russian regulations.
-	numHeading = regexp.MustCompile(`^\s*\d+(\.\d+)*\.?[\s\x{00A0}]+\S`)
-	// "Раздел 2", "Глава 1", "Статья 5", "Приложение № 1".
-	wordHeading = regexp.MustCompile(`(?i)^\s*(раздел|глава|статья|приложение|часть)\b`)
-	// Markdown headings.
-	mdHeading = regexp.MustCompile(`^\s*#{1,6}\s`)
+	// "3.4. Текст", "3.4 Текст", "3.4.1. Текст" — multi-level пункт.
+	subPunkt = regexp.MustCompile(`^(\d{1,2}(?:\.\d{1,2}){1,3})\.?(?:[\s\x{00A0}]+(\S.*)?|([А-ЯЁA-Z«"(].*))$`)
+	// "3. Текст" / "3) Текст" — first-level пункт or section heading.
+	topPunkt = regexp.MustCompile(`^(\d{1,2})[.)][\s\x{00A0}]+(\S.*)$`)
+	// "Раздел 2", "Глава 1", "Приложение № 1", "Статья 5".
+	wordHeading = regexp.MustCompile(`(?i)^(раздел|глава|статья|приложение|часть)\b`)
+	// Lone number line produced by PDF column layout ("1.1." on its own).
+	loneNumber = regexp.MustCompile(`^(\d{1,2}(?:\.\d{1,2}){0,3})\.?$`)
 )
 
-type section struct {
-	title string
-	body  strings.Builder
+type block struct {
+	number  string // "3.4", "" for unnumbered
+	heading string // section heading this block belongs to
+	text    strings.Builder
 }
 
-// Split breaks doc into chunks. Every chunk carries the section heading it
-// belongs to (e.g. "3.4") for citations.
+// Split breaks doc into chunks.
 func Split(doc model.Document) []model.Chunk {
 	text := normalize(doc.Content)
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
+	blocks := splitBlocks(text)
 
 	var out []model.Chunk
-	for _, sec := range splitSections(text) {
-		for _, piece := range splitPieces(sec.body.String(), maxChunkRunes, overlapRunes) {
-			piece = strings.TrimSpace(piece)
-			if piece == "" {
+	var cur []*block
+	curLen := 0
+	emit := func() {
+		if len(cur) == 0 {
+			return
+		}
+		var b strings.Builder
+		for i, bl := range cur {
+			if i > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(strings.TrimSpace(bl.text.String()))
+		}
+		body := strings.TrimSpace(b.String())
+		label := label(cur)
+		heading := cur[0].heading
+		for _, piece := range splitPieces(body, maxChunkRunes, overlapRunes) {
+			if piece = strings.TrimSpace(piece); piece == "" {
 				continue
 			}
 			out = append(out, model.Chunk{
-				DocID:    doc.ID,
-				DocTitle: doc.Title,
-				Tags:     doc.Tags,
-				Section:  sec.title,
-				Text:     piece,
+				DocID:     doc.ID,
+				DocTitle:  doc.Title,
+				DocNumber: doc.Number,
+				DocDate:   doc.Date,
+				DocType:   doc.Type,
+				Tags:      doc.Tags,
+				Section:   label,
+				Heading:   heading,
+				Text:      piece,
 			})
 		}
-	}
-	if len(out) == 0 {
-		return nil
+		cur, curLen = nil, 0
 	}
 
-	// Merge tiny pieces into the previous chunk of the same section, but
-	// never grow a chunk past the size bound.
-	merged := out[:0]
-	for _, c := range out {
-		last := len(merged) - 1
-		if last >= 0 &&
-			utf8.RuneCountInString(c.Text) < minChunkRunes &&
-			merged[last].Section == c.Section &&
-			utf8.RuneCountInString(merged[last].Text)+utf8.RuneCountInString(c.Text)+1 <= maxChunkRunes {
-			merged[last].Text += "\n" + c.Text
+	for _, bl := range blocks {
+		n := utf8.RuneCountInString(bl.text.String())
+		sameSection := len(cur) > 0 && cur[0].heading == bl.heading
+		if len(cur) > 0 && (!sameSection || curLen+n > maxChunkRunes || curLen >= targetRunes) {
+			// Keep tiny tails attached instead of emitting a 1-line chunk.
+			if !(sameSection && curLen < minChunkRunes && curLen+n <= maxChunkRunes) {
+				emit()
+			}
+		}
+		cur = append(cur, bl)
+		curLen += n
+	}
+	emit()
+
+	for i := range out {
+		out[i].Context = contextHeader(out[i])
+	}
+	return out
+}
+
+// splitBlocks cuts the text into numbered blocks and tracks headings.
+func splitBlocks(text string) []*block {
+	var blocks []*block
+	heading := ""
+	var cur *block
+	pendingNumber := ""
+
+	start := func(number string) {
+		cur = &block{number: number, heading: heading}
+		blocks = append(blocks, cur)
+	}
+
+	var lines []string
+	for _, raw := range strings.Split(text, "\n") {
+		if l := strings.TrimSpace(raw); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	for i, line := range lines {
+		next := ""
+		if i+1 < len(lines) {
+			next = lines[i+1]
+		}
+		// PDF layouts sometimes put "1.1." on its own line before the text.
+		if m := loneNumber.FindStringSubmatch(line); m != nil {
+			pendingNumber = m[1]
 			continue
 		}
-		merged = append(merged, c)
+		if pendingNumber != "" {
+			line = pendingNumber + ". " + line
+			pendingNumber = ""
+		}
+
+		switch {
+		case isSectionHeading(line) && !continues(next):
+			heading = headingTitle(line)
+			start(numberOf(line))
+		case subPunkt.MatchString(line):
+			start(subPunkt.FindStringSubmatch(line)[1])
+		case topPunkt.MatchString(line):
+			start(topPunkt.FindStringSubmatch(line)[1])
+		case cur == nil:
+			start("")
+		}
+		cur.text.WriteString(line)
+		cur.text.WriteString("\n")
 	}
-	return merged
+	return blocks
 }
 
-func normalize(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	s = strings.ReplaceAll(s, "\r", "\n")
-	return strings.TrimSpace(s)
+// continues reports whether the next line carries on the same sentence
+// (PDF line wrap): it starts with a lower-case letter.
+func continues(next string) bool {
+	r, _ := utf8.DecodeRuneInString(next)
+	return unicode.IsLower(r)
 }
 
-// isHeading reports whether a line looks like a structural heading of a
-// regulation: a numbered пункт, a section word, markdown heading, or a
-// fully upper-case title line.
-func isHeading(line string) bool {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
+// isSectionHeading: "3. Порядок оформления командировки" (short, no final
+// punctuation), "РЕГЛАМЕНТ …" in caps, or "Приложение № 1".
+func isSectionHeading(line string) bool {
+	n := utf8.RuneCountInString(line)
+	if n > 120 {
 		return false
 	}
-	return mdHeading.MatchString(trimmed) ||
-		wordHeading.MatchString(trimmed) ||
-		numHeading.MatchString(trimmed) ||
-		isAllCapsTitle(trimmed)
+	if wordHeading.MatchString(line) && n < 80 {
+		return true
+	}
+	if m := topPunkt.FindStringSubmatch(line); m != nil {
+		rest := strings.TrimSpace(m[2])
+		first, _ := utf8.DecodeRuneInString(rest)
+		if !unicode.IsUpper(first) || utf8.RuneCountInString(rest) > 90 {
+			return false
+		}
+		// "Порядок бронирования Концертного зала." — a title may end with a
+		// dot, but must be a single short phrase, not a sentence.
+		body := strings.TrimRight(rest, ".")
+		last, _ := utf8.DecodeLastRuneInString(body)
+		words := len(strings.Fields(body))
+		if strings.HasSuffix(rest, ".") && (words > 6 || strings.ContainsAny(body, "0123456789")) {
+			return false // a short sentence ("Срок … от 1 до 4 месяцев."), not a title
+		}
+		return !strings.ContainsRune(";:,", last) && !strings.ContainsAny(body, ".;:") && words <= 10
+	}
+	return isAllCapsTitle(line)
 }
 
 func isAllCapsTitle(s string) bool {
 	if n := utf8.RuneCountInString(s); n < 8 || n > 120 {
 		return false
 	}
-	var letters int
+	letters := 0
 	for _, r := range s {
 		if unicode.IsLetter(r) {
 			letters++
@@ -115,79 +210,111 @@ func isAllCapsTitle(s string) bool {
 			}
 		}
 	}
-	return letters >= 5
+	return letters >= 6
 }
 
-// headingTitle extracts a short citation label for a heading line. Long
-// numbered пункты collapse to their numeric prefix ("3.4." lir… "3.4.").
+func numberOf(line string) string {
+	if m := topPunkt.FindStringSubmatch(line); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
 func headingTitle(line string) string {
-	t := strings.TrimSpace(line)
-	t = strings.TrimLeft(t, "#")
-	t = strings.TrimSpace(t)
-	if utf8.RuneCountInString(t) > 60 {
-		if m := numPrefix.FindStringSubmatch(t); m != nil && numHeading.MatchString(t) {
-			return strings.TrimSpace(m[0])
-		}
-		if r := []rune(t); len(r) > 60 {
-			return strings.TrimSpace(string(r[:57])) + "…"
-		}
+	t := strings.TrimSpace(strings.TrimLeft(line, "#"))
+	if r := []rune(t); len(r) > 90 {
+		return strings.TrimSpace(string(r[:87])) + "…"
 	}
 	return t
 }
 
-// splitSections groups lines into sections led by headings. Heading lines
-// are kept inside the section body as well — they carry meaningful terms
-// ("Общие положения", "Командировки") and preserving them avoids losing
-// short пункты that look like headings. A document without headings yields
-// a single anonymous section.
-func splitSections(text string) []section {
-	var sections []section
-	var cur *section
-	var buf strings.Builder
+// label builds the citation label for a group of blocks: "п. 3.2" or
+// "п. 3.1–3.4"; falls back to the section heading.
+func label(bs []*block) string {
+	first, last := "", ""
+	for _, b := range bs {
+		if b.number == "" {
+			continue
+		}
+		if first == "" {
+			first = b.number
+		}
+		// Keep the range monotonic: numbering restarts inside a chunk (e.g.
+		// list items "1 - 5 разряд" after "2.2") would produce "п. 2–11".
+		if last == "" || (numLess(last, b.number) && topLevel(b.number)-topLevel(last) <= 1) {
+			last = b.number
+		}
+	}
+	switch {
+	case first == "":
+		return bs[0].heading
+	case first == last:
+		return "п. " + first
+	default:
+		return "п. " + first + "–" + last
+	}
+}
 
-	flush := func() {
-		if cur == nil {
-			return
+func numParts(n string) []int {
+	var out []int
+	for _, p := range strings.Split(n, ".") {
+		v := 0
+		for _, r := range p {
+			v = v*10 + int(r-'0')
 		}
-		if b := strings.TrimSpace(buf.String()); b != "" {
-			cur.body.WriteString(b)
-			cur.body.WriteString("\n")
-		}
-		buf.Reset()
+		out = append(out, v)
 	}
+	return out
+}
 
-	for _, line := range strings.Split(text, "\n") {
-		if isHeading(line) {
-			flush()
-			if cur != nil {
-				sections = append(sections, *cur)
-			}
-			cur = &section{title: headingTitle(line)}
-		}
-		if cur == nil {
-			cur = &section{}
-		}
-		buf.WriteString(line)
-		buf.WriteString("\n")
+func numLess(a, b string) bool {
+	if a == "" {
+		return true
 	}
-	flush()
-	if cur != nil {
-		sections = append(sections, *cur)
+	x, y := numParts(a), numParts(b)
+	for i := 0; i < len(x) && i < len(y); i++ {
+		if x[i] != y[i] {
+			return x[i] < y[i]
+		}
 	}
-	return sections
+	return len(x) < len(y)
+}
+
+func topLevel(n string) int { return numParts(n)[0] }
+
+func contextHeader(c model.Chunk) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Документ: %s", c.DocTitle)
+	if c.DocNumber != "" {
+		fmt.Fprintf(&b, " № %s", c.DocNumber)
+	}
+	if c.DocDate != "" {
+		fmt.Fprintf(&b, " от %s", c.DocDate)
+	}
+	if c.Heading != "" && c.Heading != c.DocTitle {
+		fmt.Fprintf(&b, ". Раздел: %s", c.Heading)
+	}
+	if c.Section != "" && c.Section != c.Heading {
+		fmt.Fprintf(&b, ". %s", c.Section)
+	}
+	return b.String()
+}
+
+func normalize(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.TrimSpace(s)
 }
 
 // splitPieces splits s into chunks of at most maxRunes, preferring breaks at
-// paragraph, sentence or word boundaries, with a small overlap.
+// line, sentence or word boundaries, with a small overlap.
 func splitPieces(s string, maxRunes, overlap int) []string {
 	if utf8.RuneCountInString(strings.TrimSpace(s)) <= maxRunes {
 		return []string{s}
 	}
-
 	var pieces []string
 	var cur strings.Builder
 	curLen := 0
-
 	flush := func() {
 		if strings.TrimSpace(cur.String()) != "" {
 			pieces = append(pieces, cur.String())
@@ -195,25 +322,23 @@ func splitPieces(s string, maxRunes, overlap int) []string {
 		cur.Reset()
 		curLen = 0
 	}
-
-	for _, p := range strings.Split(s, "\n\n") {
+	for _, p := range strings.Split(s, "\n") {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
 		plen := utf8.RuneCountInString(p)
 		if plen > maxRunes {
-			// Oversized paragraph: flush current, hard-split the paragraph.
 			flush()
 			pieces = append(pieces, splitLong(p, maxRunes, overlap)...)
 			continue
 		}
-		if curLen > 0 && curLen+2+plen > maxRunes {
+		if curLen > 0 && curLen+1+plen > maxRunes {
 			flush()
 		}
 		if curLen > 0 {
-			cur.WriteString("\n\n")
-			curLen += 2
+			cur.WriteString("\n")
+			curLen++
 		}
 		cur.WriteString(p)
 		curLen += plen
@@ -230,33 +355,29 @@ func splitLong(s string, maxRunes, overlap int) []string {
 	for len(r)-start > maxRunes {
 		limit := start + maxRunes
 		cut := limit
-		// Prefer the last newline in the last quarter of the window.
 		lo := start + maxRunes*3/4
 		for i := limit - 1; i >= lo; i-- {
-			if r[i] == '\n' {
-				cut = i
+			if r[i] == '.' || r[i] == ';' || r[i] == '!' || r[i] == '?' {
+				cut = i + 1
 				break
 			}
 		}
 		if cut == limit {
-			// Then a sentence or word boundary.
 			for i := limit - 1; i >= lo; i-- {
-				if r[i] == ' ' || r[i] == '.' || r[i] == '!' || r[i] == '?' {
+				if r[i] == ' ' {
 					cut = i + 1
 					break
 				}
 			}
 		}
-		piece := strings.TrimSpace(string(r[start:cut]))
-		if piece != "" {
+		if piece := strings.TrimSpace(string(r[start:cut])); piece != "" {
 			out = append(out, piece)
 		}
-		// Next window starts `overlap` runes back, snapped forward to a space.
 		next := cut - overlap
 		if next < start+minChunkRunes/2 {
 			next = start + minChunkRunes/2
 		}
-		for next < cut && next < len(r) && r[next] != ' ' && r[next] != '\n' {
+		for next < cut && next < len(r) && r[next] != ' ' {
 			next++
 		}
 		start = next

@@ -5,6 +5,8 @@ import {
   deleteDocument,
   getDocument,
   listDocuments,
+  listDocumentsBrief,
+  markDocumentRead,
   updateDocument,
 } from '../api/documentApi'
 import type { DocumentInput } from './types'
@@ -49,6 +51,22 @@ export function useDeleteDocument() {
   const invalidate = useInvalidateDocuments()
   return useMutation({
     mutationFn: (id: string) => deleteDocument(id),
+    onSuccess: invalidate,
+  })
+}
+
+/** Каталог для плана ознакомления (без текстов, со статусом прочтения). */
+export function useDocumentsBrief() {
+  return useQuery({
+    queryKey: [...queryKeys.documents.all, 'brief'],
+    queryFn: listDocumentsBrief,
+  })
+}
+
+export function useMarkRead() {
+  const invalidate = useInvalidateDocuments()
+  return useMutation({
+    mutationFn: (id: string) => markDocumentRead(id),
     onSuccess: invalidate,
   })
 }

@@ -36,9 +36,7 @@ func main() {
 	}
 
 	st := store.NewPostgres(pool)
-	if cfg.SeedDemoData {
-		store.SeedDemo(ctx, st)
-	}
+	store.SeedDemo(ctx, st, cfg.SeedDemoData)
 
 	fs, err := storage.NewLocal(cfg.StoragePath)
 	if err != nil {
@@ -47,8 +45,14 @@ func main() {
 	ml := mlclient.New(cfg.MLServiceURL, time.Duration(cfg.MLTimeoutSec)*time.Second)
 
 	srv := httpapi.New(st, fs, ml, cfg)
-	// Push the document set to the ML index so /api/ask has content to search.
-	srv.SyncDocuments(ctx)
+	// Push the document set to the ML index and import the knowledge base
+	// folder in the background: first-time embedding of the corpus can take
+	// minutes on CPU and must not block the API. Parsing of imported files
+	// runs in the job worker; each parsed document is indexed on completion.
+	go func() {
+		srv.SyncDocuments(ctx)
+		srv.ImportDirectory(ctx, cfg.DocsDir)
+	}()
 
 	// Background worker: document parsing, answer generation.
 	worker := jobs.NewRunner(st, fs, ml, cfg.WorkerConcurrency)

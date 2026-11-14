@@ -10,6 +10,10 @@ export interface Document {
   updatedAt: string
   read?: boolean
   readAt?: string
+  documentNumber?: string
+  documentType?: string
+  documentDate?: string
+  processingStatus?: string
 }
 
 export interface DocumentInput {

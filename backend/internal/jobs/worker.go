@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"phystech-answer/backend/internal/docmeta"
 	"phystech-answer/backend/internal/mlclient"
 	"phystech-answer/backend/internal/model"
 	"phystech-answer/backend/internal/parse"
@@ -176,20 +177,31 @@ func (r *Runner) handleDocumentParse(ctx context.Context, j model.Job) error {
 	if err := r.st.SetVersionContent(ctx, p.VersionID, text); err != nil {
 		return err
 	}
-	if err := r.st.SetVersionStatus(ctx, p.VersionID, "published", ""); err != nil {
-		return err
+	if cur, derr := r.st.GetDocument(ctx, p.DocumentID); derr == nil {
+		meta := docmeta.FromFilename(p.Filename)
+		if cur.DocumentNumber != "" {
+			meta.Number = cur.DocumentNumber
+		}
+		if cur.DocumentDate != nil {
+			meta.Date = cur.DocumentDate
+		}
+		meta = docmeta.Enrich(meta, text)
+		if err := r.st.UpdateDocumentMeta(ctx, p.DocumentID, meta.Number, meta.Type, meta.Date); err != nil {
+			log.Printf("jobs: meta %s: %v", p.DocumentID, err)
+		}
 	}
-
-	// Push the processed document to the ML index.
+	// Index in ML before publishing: "published" in the UI means the
+	// document is already searchable by the assistant.
 	if r.ml != nil {
 		doc, derr := r.st.GetDocument(ctx, p.DocumentID)
 		if derr == nil {
+			doc.Content = text // the projection may still point at an older published version
 			if ierr := r.ml.IndexDocument(ctx, doc); ierr != nil {
 				log.Printf("jobs: index %s in ML: %v", doc.ID, ierr)
 			}
 		}
 	}
-	return nil
+	return r.st.SetVersionStatus(ctx, p.VersionID, "published", "")
 }
 
 // ---------- answer.generate ----------
