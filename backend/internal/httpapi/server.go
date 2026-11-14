@@ -4,9 +4,13 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
+	"phystech-answer/backend/internal/authx"
 	"phystech-answer/backend/internal/config"
+	"phystech-answer/backend/internal/mailer"
 	"phystech-answer/backend/internal/mlclient"
 	"phystech-answer/backend/internal/model"
 	"phystech-answer/backend/internal/storage"
@@ -22,6 +26,18 @@ type Server struct {
 	corsAllow  string
 	client     *http.Client
 	sessionTTL time.Duration
+
+	mailer             *mailer.Mailer
+	appPublicURL       string
+	rememberTTL        time.Duration
+	resetTTL           time.Duration
+	allowedEmailDomain string
+	secureCookies      bool
+
+	loginLimit    *rateLimiter
+	registerLimit *rateLimiter
+	forgotLimit   *rateLimiter
+	resetLimit    *rateLimiter
 }
 
 func New(st store.Store, fs storage.Storage, ml *mlclient.Client, cfg config.Config) *Server {
@@ -31,7 +47,19 @@ func New(st store.Store, fs storage.Storage, ml *mlclient.Client, cfg config.Con
 		ml:         ml,
 		corsAllow:  cfg.CORSOrigin,
 		client:     &http.Client{Timeout: 60 * time.Second},
-		sessionTTL: 72 * time.Hour,
+		sessionTTL: time.Duration(cfg.SessionTTLHours) * time.Hour,
+
+		mailer:             mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPFrom),
+		appPublicURL:       cfg.AppPublicURL,
+		rememberTTL:        time.Duration(cfg.RememberTTLHours) * time.Hour,
+		resetTTL:           time.Duration(cfg.ResetTTLMinutes) * time.Minute,
+		allowedEmailDomain: cfg.AllowedEmailDomain,
+		secureCookies:      strings.HasPrefix(cfg.AppPublicURL, "https://"),
+
+		loginLimit:    newRateLimiter(10, time.Minute),
+		registerLimit: newRateLimiter(10, time.Minute),
+		forgotLimit:   newRateLimiter(5, time.Minute),
+		resetLimit:    newRateLimiter(10, time.Minute),
 	}
 }
 
@@ -47,9 +75,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.HandleFunc("POST /api/v1/auth/register", s.register)
 	mux.HandleFunc("POST /api/v1/auth/forgot-password", s.forgotPassword)
+	mux.HandleFunc("POST /api/v1/auth/reset-password", s.resetPassword)
 	mux.HandleFunc("POST /api/v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /api/v1/auth/me", s.me)
 	mux.HandleFunc("GET /api/v1/users/me", s.me)
+	mux.HandleFunc("PATCH /api/v1/users/me", s.patchMe)
+	mux.HandleFunc("GET /api/v1/departments", s.listDepartments)
 
 	// Documents catalog (v1).
 	mux.HandleFunc("GET /api/v1/documents", s.listDocuments)
@@ -110,7 +141,6 @@ func (s *Server) Handler() http.Handler {
 
 	// Онбординг: документы (папки/видимость), отделы, участники, назначения.
 	mux.HandleFunc("PATCH /api/v1/admin/documents/{id}", s.patchDocument)
-	mux.HandleFunc("GET /api/v1/departments", s.listDepartments)
 	mux.HandleFunc("POST /api/v1/admin/departments", s.createDepartment)
 	mux.HandleFunc("PATCH /api/v1/admin/departments/{id}", s.renameDepartment)
 	mux.HandleFunc("DELETE /api/v1/admin/departments/{id}", s.deleteDepartment)
@@ -136,7 +166,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/users/{id}/unread", s.unreadDocuments)
 	mux.HandleFunc("POST /api/ask", s.ask)
 
-	return s.cors(s.recoverer(s.logging(mux)))
+	return s.cors(s.recoverer(s.logging(s.originCheck(mux))))
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
@@ -154,13 +184,54 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", s.corsAllow)
+		origin := r.Header.Get("Origin")
+		switch {
+		case s.corsAllow == "*":
+			// '*' несовместим с credentials: cookie-сессии требуют
+			// явно перечисленных origins в CORS_ORIGIN.
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		case origin != "" && s.originAllowed(origin):
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Add("Vary", "Origin")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// originAllowed проверяет origin по CORS_ORIGIN — строка или список через запятую.
+func (s *Server) originAllowed(origin string) bool {
+	if s.corsAllow == "*" {
+		return true
+	}
+	for _, o := range strings.Split(s.corsAllow, ",") {
+		if strings.TrimSpace(o) == origin {
+			return true
+		}
+	}
+	return false
+}
+
+// originCheck — защита cookie-авторизации от CSRF: изменяющие запросы с
+// заголовком Origin принимаются только от своего origin (или разрешённого
+// CORS_ORIGIN). Запросы без Origin (curl, server-to-server) пропускаются.
+func (s *Server) originCheck(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			if origin := r.Header.Get("Origin"); origin != "" {
+				u, err := url.Parse(origin)
+				allowed := err == nil && (u.Host == r.Host || s.originAllowed(origin))
+				if !allowed {
+					writeErrorCode(w, http.StatusForbidden, "FORBIDDEN", "cross-origin request rejected")
+					return
+				}
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -202,7 +273,7 @@ func (s *Server) currentUser(r *http.Request) (model.User, bool) {
 	if err != nil || c.Value == "" {
 		return model.User{}, false
 	}
-	u, err := s.store.GetSessionUser(r.Context(), c.Value)
+	u, err := s.store.GetSessionUser(r.Context(), authx.HashToken(c.Value))
 	if err != nil {
 		return model.User{}, false
 	}
@@ -241,10 +312,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // writeError emits the spec §29 error shape.
 func writeError(w http.ResponseWriter, status int, msg string) {
+	writeErrorCode(w, status, http.StatusText(status), msg)
+}
+
+// writeErrorCode — единый формат ошибок API с машинным кодом (спека §15).
+func writeErrorCode(w http.ResponseWriter, status int, code, msg string) {
 	writeJSON(w, status, map[string]any{
 		"error": map[string]any{
-			"code":    http.StatusText(status),
-			"message": msg,
+			"code":      code,
+			"message":   msg,
+			"retryable": status >= 500,
 		},
 	})
 }

@@ -33,16 +33,40 @@ func (c *Client) Enabled() bool { return c != nil && c.baseURL != "" }
 // Source mirrors the citation format returned by the ML service.
 type Source struct {
 	DocumentID string  `json:"documentId"`
+	ChunkID    string  `json:"chunkId,omitempty"`
 	Title      string  `json:"title"`
 	Section    string  `json:"section,omitempty"`
+	Page       int     `json:"page,omitempty"`
 	Excerpt    string  `json:"excerpt"`
 	Score      float64 `json:"score"`
 }
 
+// Step mirrors the structured step returned by the ML answer payload.
+type Step struct {
+	Order       int      `json:"order"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Responsible *string  `json:"responsible"`
+	Deadline    *string  `json:"deadline"`
+	Condition   *string  `json:"condition"`
+	CitationIDs []string `json:"citation_ids"`
+}
+
+// Conflict mirrors a detected contradiction between sources.
+type Conflict struct {
+	Description string   `json:"description"`
+	ChunkIDs    []string `json:"chunk_ids"`
+}
+
 // AskResult is the ML answer plus the degraded-mode flag.
 type AskResult struct {
-	Answer  string
-	Sources []Source
+	Answer             string
+	Sources            []Source
+	Status             string
+	Steps              []Step
+	Warnings           []string
+	MissingInformation []string
+	Conflicts          []Conflict
 	// Stub is true when ML was unreachable and this is a fallback reply.
 	Stub bool
 }
@@ -79,8 +103,13 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 // Ask runs the RAG pipeline in the ML service.
 func (c *Client) Ask(ctx context.Context, question string) (AskResult, error) {
 	var ml struct {
-		Answer  string   `json:"answer"`
-		Sources []Source `json:"sources"`
+		Answer             string     `json:"answer"`
+		Sources            []Source   `json:"sources"`
+		Status             string     `json:"status"`
+		Steps              []Step     `json:"steps"`
+		Warnings           []string   `json:"warnings"`
+		MissingInformation []string   `json:"missing_information"`
+		Conflicts          []Conflict `json:"conflicts"`
 	}
 	code, err := c.do(ctx, http.MethodPost, "/api/ask",
 		map[string]string{"question": question}, &ml)
@@ -93,7 +122,11 @@ func (c *Client) Ask(ctx context.Context, question string) (AskResult, error) {
 	if ml.Sources == nil {
 		ml.Sources = []Source{}
 	}
-	return AskResult{Answer: ml.Answer, Sources: ml.Sources}, nil
+	return AskResult{
+		Answer: ml.Answer, Sources: ml.Sources, Status: ml.Status,
+		Steps: ml.Steps, Warnings: ml.Warnings,
+		MissingInformation: ml.MissingInformation, Conflicts: ml.Conflicts,
+	}, nil
 }
 
 // AskRaw returns the full ML answer JSON (status, summary, steps,
@@ -172,20 +205,23 @@ func (c *Client) SyncDocuments(ctx context.Context, docs []model.Document) error
 
 // mlDoc is the document payload of the ML index API.
 type mlDoc struct {
-	ID      string   `json:"id"`
-	Title   string   `json:"title"`
-	Content string   `json:"content"`
-	Tags    []string `json:"tags"`
-	Number  string   `json:"number,omitempty"`
-	Type    string   `json:"type,omitempty"`
-	Date    string   `json:"date,omitempty"` // YYYY-MM-DD
+	ID             string   `json:"id"`
+	Title          string   `json:"title"`
+	Content        string   `json:"content"`
+	Tags           []string `json:"tags"`
+	DocumentNumber string   `json:"documentNumber,omitempty"`
+	DocumentType   string   `json:"documentType,omitempty"`
+	DocumentDate   string   `json:"documentDate,omitempty"` // YYYY-MM-DD
+	Category       string   `json:"category,omitempty"`
+	LegalStatus    string   `json:"legalStatus,omitempty"`
 }
 
 func toMLDoc(d model.Document) mlDoc {
 	m := mlDoc{ID: d.ID, Title: d.Title, Content: d.Content, Tags: d.Tags,
-		Number: d.DocumentNumber, Type: d.DocumentType}
+		DocumentNumber: d.DocumentNumber, DocumentType: d.DocumentType,
+		Category: d.Category, LegalStatus: d.LegalStatus}
 	if d.DocumentDate != nil {
-		m.Date = d.DocumentDate.Format("2006-01-02")
+		m.DocumentDate = d.DocumentDate.Format("2006-01-02")
 	}
 	return m
 }

@@ -42,10 +42,11 @@ export function FaqSection() {
                         <span className="pl-faq__icon" aria-hidden>
                           <svg viewBox="0 0 14 14" width="14" height="14" fill="none">
                             <path
-                              d="M7 1v12M1 7h12"
+                              d="M2.5 8.5 7 4l4.5 4.5"
                               stroke="currentColor"
                               strokeWidth="1.8"
                               strokeLinecap="round"
+                              strokeLinejoin="round"
                             />
                           </svg>
                         </span>

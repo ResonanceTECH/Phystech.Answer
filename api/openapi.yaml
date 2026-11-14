@@ -553,6 +553,9 @@ components:
         pageNumber:    { type: integer }
         quote:         { type: string }
         score:         { type: number }
+        legalStatus: { type: string }
+        accessLevel: { type: string }
+        rank:        { type: number }
     SearchResult:
       type: object
       properties:
@@ -561,7 +564,7 @@ components:
         documentTitle: { type: string }
         sectionNumber: { type: string }
         content:       { type: string }
-        score:         { type: number }
+        rank:          { type: number }
   securitySchemes:
     sessionCookie:
       type: apiKey

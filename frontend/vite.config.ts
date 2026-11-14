@@ -14,7 +14,8 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
-        changeOrigin: true,
+        // Host не подменяем: backend сверяет Origin с Host при cookie-авторизации.
+        changeOrigin: false,
       },
     },
   },

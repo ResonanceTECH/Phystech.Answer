@@ -1,6 +1,6 @@
 // Package chat is a minimal OpenAI-compatible chat client.
-// Works with Ollama (local or Ollama Cloud), vLLM, LM Studio, OpenAI and
-// other providers exposing POST {base}/chat/completions.
+// Works with llama.cpp server (http://127.0.0.1:8081/v1), Ollama, LM Studio,
+// OpenAI and other providers exposing POST {base}/chat/completions.
 package chat
 
 import (
@@ -8,41 +8,41 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
 type Client struct {
-	baseURL string
-	apiKey  string
-	model   string
-	hc      *http.Client
-	// reasoning is sent as reasoning_effort ("none" disables the thinking
-	// phase of hybrid reasoning models such as Qwen 3.5 — grounded RAG
-	// answers do not need it and it multiplies latency).
-	reasoning string
-	// noJSONMode is set once the provider rejects response_format for this
-	// model; later calls rely on the prompt alone.
-	noJSONMode atomic.Bool
+	baseURL    string
+	apiKey     string
+	model      string
+	noThinking bool
+	hc         *http.Client
 }
 
-func New(baseURL, apiKey, model, reasoning string) *Client {
+func New(baseURL, apiKey, model string) *Client {
+	return newWith(baseURL, apiKey, model, false)
+}
+
+// NewNoThinking creates a client that sends
+// chat_template_kwargs.enable_thinking=false (llama.cpp reasoning models).
+func NewNoThinking(baseURL, apiKey, model string) *Client {
+	return newWith(baseURL, apiKey, model, true)
+}
+
+func newWith(baseURL, apiKey, model string, noThinking bool) *Client {
 	if baseURL == "" {
 		return nil
 	}
 	return &Client{
-		baseURL:   baseURL,
-		apiKey:    apiKey,
-		model:     model,
-		reasoning: reasoning,
-		hc:        &http.Client{Timeout: 180 * time.Second},
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		apiKey:     apiKey,
+		model:      model,
+		noThinking: noThinking,
+		hc:         &http.Client{Timeout: 300 * time.Second},
 	}
 }
-
-func (c *Client) Model() string { return c.model }
 
 type message struct {
 	Role    string `json:"role"`
@@ -50,118 +50,139 @@ type message struct {
 }
 
 type chatRequest struct {
-	Model          string          `json:"model"`
-	Messages       []message       `json:"messages"`
-	Temperature    float64         `json:"temperature"`
-	Seed           int             `json:"seed,omitempty"`
-	Reasoning      string          `json:"reasoning_effort,omitempty"`
-	ResponseFormat *responseFormat `json:"response_format,omitempty"`
+	Model              string         `json:"model"`
+	Messages           []message      `json:"messages"`
+	Temperature        float64        `json:"temperature"`
+	MaxTokens          int            `json:"max_tokens,omitempty"`
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
+	ResponseFormat     map[string]any `json:"response_format,omitempty"`
 }
 
-type responseFormat struct {
-	Type string `json:"type"`
+type usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+}
+
+type timings struct {
+	PredictedPerSecond float64 `json:"predicted_per_second"`
+	PredictedMS        float64 `json:"predicted_ms"`
 }
 
 type chatResponse struct {
 	Choices []struct {
-		Message message `json:"message"`
+		Message struct {
+			Role             string `json:"role"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
+		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
+	Usage   usage   `json:"usage"`
+	Timings timings `json:"timings"`
+}
+
+// Result carries the assistant reply plus generation stats.
+type Result struct {
+	Content       string
+	FinishReason  string
+	PromptTokens  int
+	CompletionTok int
+	TokensPerSec  float64
 }
 
 // Chat sends a system+user prompt pair and returns the assistant reply.
 func (c *Client) Chat(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	return c.do(ctx, systemPrompt, userPrompt, false)
-}
-
-// ChatJSON asks for a JSON object reply (response_format=json_object). If
-// the provider rejects the parameter, it retries without it — the prompt
-// itself requests JSON.
-func (c *Client) ChatJSON(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	if c.noJSONMode.Load() {
-		return c.do(ctx, systemPrompt, userPrompt, false)
-	}
-	out, err := c.do(ctx, systemPrompt, userPrompt, true)
-	if err != nil && isUnsupportedJSONMode(err) {
-		c.noJSONMode.Store(true)
-		return c.do(ctx, systemPrompt, userPrompt, false)
-	}
-	return out, err
-}
-
-// isUnsupportedJSONMode: providers answer 400 ("unknown parameter") or 501
-// ("structured output is unavailable") when response_format is unsupported.
-func isUnsupportedJSONMode(err error) bool {
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, " 400:") || strings.Contains(msg, " 501:") ||
-		strings.Contains(msg, "structured output") || strings.Contains(msg, "response_format")
-}
-
-func (c *Client) do(ctx context.Context, systemPrompt, userPrompt string, jsonMode bool) (string, error) {
-	req := chatRequest{
-		Model: c.model,
-		Messages: []message{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-		Temperature: 0, // deterministic, grounded answers
-		Seed:        42,
-		Reasoning:   c.reasoning,
-	}
-	if jsonMode {
-		req.ResponseFormat = &responseFormat{Type: "json_object"}
-	}
-	body, err := json.Marshal(req)
+	res, err := c.ChatEx(ctx, ChatOptions{System: systemPrompt, User: userPrompt})
 	if err != nil {
 		return "", err
 	}
-
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			select {
-			case <-ctx.Done():
-				return "", ctx.Err()
-			case <-time.After(time.Duration(attempt) * time.Second):
-			}
-		}
-		out, retry, err := c.send(ctx, body)
-		if err == nil {
-			return out, nil
-		}
-		lastErr = err
-		if !retry {
-			break
-		}
-	}
-	return "", lastErr
+	return res.Content, nil
 }
 
-// send performs one request; retry reports whether the error is transient.
-func (c *Client) send(ctx context.Context, body []byte) (string, bool, error) {
+type ChatOptions struct {
+	System      string
+	User        string
+	Messages    []message // optional full history; takes precedence over System/User
+	Temperature float64
+	MaxTokens   int
+	JSONMode    bool // request application/json response format
+	NoThinking  *bool
+}
+
+func (c *Client) ChatEx(ctx context.Context, opts ChatOptions) (Result, error) {
+	msgs := opts.Messages
+	if msgs == nil {
+		msgs = []message{{Role: "system", Content: opts.System}}
+		msgs = append(msgs, message{Role: "user", Content: opts.User})
+	}
+	temp := opts.Temperature
+	if temp == 0 {
+		temp = 0.2
+	}
+	req := chatRequest{
+		Model:       c.model,
+		Messages:    msgs,
+		Temperature: temp,
+		MaxTokens:   opts.MaxTokens,
+	}
+	noThink := c.noThinking
+	if opts.NoThinking != nil {
+		noThink = *opts.NoThinking
+	}
+	if noThink {
+		req.ChatTemplateKwargs = map[string]any{"enable_thinking": false}
+	}
+	if opts.JSONMode {
+		req.ResponseFormat = map[string]any{"type": "json_object"}
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return Result{}, err
+	}
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return "", false, err
+		return Result{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if c.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
+
 	resp, err := c.hc.Do(httpReq)
 	if err != nil {
-		return "", true, err
+		return Result{}, err
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
-		retry := resp.StatusCode == 429 || (resp.StatusCode >= 500 && resp.StatusCode != 501)
-		return "", retry, fmt.Errorf("chat API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
+		var eb bytes.Buffer
+		buf := make([]byte, 4096)
+		n, _ := resp.Body.Read(buf)
+		eb.Write(buf[:n])
+		return Result{}, fmt.Errorf("chat API returned %s: %s", resp.Status, eb.String())
 	}
+
 	var out chatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", true, fmt.Errorf("decode chat response: %w", err)
+		return Result{}, fmt.Errorf("decode chat response: %w", err)
 	}
-	if len(out.Choices) == 0 || strings.TrimSpace(out.Choices[0].Message.Content) == "" {
-		return "", true, fmt.Errorf("chat API returned empty reply")
+	if len(out.Choices) == 0 {
+		return Result{}, fmt.Errorf("chat API returned no choices")
 	}
-	return strings.TrimSpace(out.Choices[0].Message.Content), false, nil
+	ch := out.Choices[0]
+	content := strings.TrimSpace(ch.Message.Content)
+	// Reasoning models may put the answer after a long thinking trace; when
+	// thinking is disabled content holds the reply directly. If the model
+	// still emits only reasoning, surface that as the content.
+	if content == "" && ch.Message.ReasoningContent != "" {
+		content = strings.TrimSpace(ch.Message.ReasoningContent)
+	}
+	return Result{
+		Content:       content,
+		FinishReason:  ch.FinishReason,
+		PromptTokens:  out.Usage.PromptTokens,
+		CompletionTok: out.Usage.CompletionTokens,
+		TokensPerSec:  out.Timings.PredictedPerSecond,
+	}, nil
 }

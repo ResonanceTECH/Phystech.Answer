@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"phystech-answer/backend/internal/model"
 	"strings"
 )
 
@@ -35,12 +36,22 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, _ := s.currentUser(r)
-	// Access-level gate: non-privileged users can't see restricted docs.
+	// Access gate (spec §13): restricted docs are visible only to
+	// admin/expert; public/internal are visible to everyone.
 	privileged := user.Role == "admin" || user.Role == "expert"
-	_ = privileged // per-document access filtering applied below via access_level
+	visible := hits[:0]
+	for _, h := range hits {
+		if !privileged && h.AccessLevel == "restricted" {
+			continue
+		}
+		visible = append(visible, h)
+	}
+	if visible == nil {
+		visible = []model.SearchHit{}
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"query":   q,
-		"results": hits,
+		"results": visible,
 	})
 }

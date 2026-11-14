@@ -16,7 +16,7 @@ import {
 } from '@mui/material'
 import { NavLink } from 'react-router-dom'
 import { paths } from '@/app/router/routePaths'
-import { canManageDocuments, useSession } from '@/entities/session'
+import { isAdminRole, useAuthStore } from '@/entities/user'
 import { config } from '@/shared/config/env'
 
 export const DRAWER_WIDTH = 248
@@ -28,14 +28,14 @@ interface AppSidebarProps {
 
 const userItems = [
   { label: 'Ассистент', icon: <AddCommentOutlinedIcon />, to: paths.app.chatNew },
-  { label: 'План ознакомления', icon: <RouteOutlinedIcon />, to: paths.app.onboarding },
+  { label: 'План ознакомления', icon: <RouteOutlinedIcon />, to: paths.app.plan },
   { label: 'Документы', icon: <ArticleOutlinedIcon />, to: paths.app.documents },
   { label: 'Инструкции', icon: <BookmarkBorderIcon />, to: paths.app.instructions },
 ]
 
 export function AppSidebar({ mobileOpen, onMobileClose }: AppSidebarProps) {
-  const { user } = useSession()
-  const showAdmin = config.enableAdmin && canManageDocuments(user)
+  const user = useAuthStore((s) => s.user)
+  const showAdmin = config.enableAdmin && isAdminRole(user?.role)
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar sx={{ px: 2 }}>

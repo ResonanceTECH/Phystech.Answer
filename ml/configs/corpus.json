@@ -1,0 +1,204 @@
+{
+  "documents": [
+    {
+      "file": "460-1 Открытие ФЛС_приказ об изменении в приказе на открытие ФЛС.txt",
+      "title": "Приказ № 460-1 об открытии финансово-лицевого счёта (с изменениями)",
+      "documentNumber": "460-1",
+      "documentType": "приказ",
+      "documentDate": "2017-04-28",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["флс", "финансы", "открытие счёта", "ocr"]
+    },
+    {
+      "file": "Копия Приложение 1б Бланк сметы РЦНИ.txt",
+      "title": "Приложение 1б — Бланк сметы РЦНИ",
+      "documentNumber": "",
+      "documentType": "приложение",
+      "documentDate": "",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["смета", "бланк", "форма", "РЦНИ"]
+    },
+    {
+      "file": "Приказ N 3065-1 от 25.11.2021.txt",
+      "title": "Приказ № 3065-1 от 25.11.2021 об изменении Регламента открытия финансового лицевого счёта",
+      "documentNumber": "3065-1",
+      "documentType": "приказ",
+      "documentDate": "2021-11-25",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["флс", "приказ", "регламент открытия флс"]
+    },
+    {
+      "file": "Приказ N 3614-1 от 11.08.2025 по Фин.структуре 2026г..txt",
+      "title": "Приказ № 3614-1 от 11.08.2025 об утверждении финансовой структуры МФТИ",
+      "documentNumber": "3614-1",
+      "documentType": "приказ",
+      "documentDate": "2025-08-11",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["финансовая структура", "цфо", "бюджет"]
+    },
+    {
+      "file": "Приказ N 3699-1 от 18.08.2025.txt",
+      "title": "Приказ № 3699-1 от 18.08.2025 о формировании бюджетов подразделений и ПФХД МФТИ на 2026-2028 гг.",
+      "documentNumber": "3699-1",
+      "documentType": "приказ",
+      "documentDate": "2025-08-18",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["бюджетирование", "пфхд", "бюджет"]
+    },
+    {
+      "file": "Приказ N 794-1 от 28.03.2023.txt",
+      "title": "Приказ № 794-1 от 28.03.2023 о внесении изменений в приказ № 1469-1",
+      "documentNumber": "794-1",
+      "documentType": "приказ",
+      "documentDate": "2023-03-28",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["смета", "приказ", "изменения"]
+    },
+    {
+      "file": "Приказ N 889-1 от 04.04.2023_инструкция по корректировке смет.txt",
+      "title": "Приказ № 889-1 от 04.04.2023 — Инструкция по корректировке смет",
+      "documentNumber": "889-1",
+      "documentType": "приказ",
+      "documentDate": "2023-04-04",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["смета", "корректировка", "инструкция"]
+    },
+    {
+      "file": "Приказ и Регламент работы первой линии техподдержки.txt",
+      "title": "Приказ № 2993-1 от 19.06.2026 — Регламент первой линии технической поддержки УИТ",
+      "documentNumber": "2993-1",
+      "documentType": "приказ",
+      "documentDate": "2026-06-19",
+      "category": "it",
+      "legalStatus": "in_force",
+      "tags": ["ит", "техподдержка", "уит", "обращения"]
+    },
+    {
+      "file": "Приказ и регламент по ЭБ.txt",
+      "title": "Приказ и Регламент по электронному бюджету (ЭБ)",
+      "documentNumber": "",
+      "documentType": "приказ",
+      "documentDate": "",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["эб", "электронный бюджет", "казначейство", "ocr"]
+    },
+    {
+      "file": "Приказ №  5990-1 от 03.11.2026 новый.txt",
+      "title": "Приказ № 5990-1 от 03.11.2026 о внутреннем заимствовании (новая редакция)",
+      "documentNumber": "5990-1",
+      "documentType": "приказ",
+      "documentDate": "2026-11-03",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["заимствование", "приказ", "новая редакция"]
+    },
+    {
+      "file": "Приложение 1_новая смета 2019 (с незащищенными формулами).txt",
+      "title": "Приложение 1 — Новая смета 2019 (бланк с формулами)",
+      "documentNumber": "",
+      "documentType": "приложение",
+      "documentDate": "2019-01-01",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["смета", "бланк", "форма"]
+    },
+    {
+      "file": "Приложение 1а Бланк сметы.txt",
+      "title": "Приложение 1а — Бланк сметы",
+      "documentNumber": "",
+      "documentType": "приложение",
+      "documentDate": "",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["смета", "бланк", "форма"]
+    },
+    {
+      "file": "Приложение к приказу об утверждении фин. структуры 2026г..txt",
+      "title": "Приложение к приказу — Финансовая структура МФТИ 2026",
+      "documentNumber": "",
+      "documentType": "приложение",
+      "documentDate": "2025-08-11",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["финансовая структура", "цфо"]
+    },
+    {
+      "file": "Приложения к приказу_ о формировании бюджетирования  2026г..txt",
+      "title": "Приложения к приказу — Формирование бюджетирования 2026",
+      "documentNumber": "",
+      "documentType": "приложение",
+      "documentDate": "2025-08-18",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["бюджетирование", "приложения"]
+    },
+    {
+      "file": "Распоряжение N 700 от 28.12.2024 Порядок присвоения номера ФЛС.txt",
+      "title": "Распоряжение № 700 от 28.12.2024 — Порядок присвоения номера ФЛС",
+      "documentNumber": "700",
+      "documentType": "распоряжение",
+      "documentDate": "2024-12-28",
+      "category": "finance",
+      "legalStatus": "in_force",
+      "tags": ["флс", "номер счёта", "распоряжение"]
+    },
+    {
+      "file": "Регламент бронирования конц зала.txt",
+      "title": "Регламент бронирования концертного зала МФТИ",
+      "documentNumber": "",
+      "documentType": "регламент",
+      "documentDate": "",
+      "category": "services",
+      "legalStatus": "in_force",
+      "tags": ["концертный зал", "бронирование", "кмо", "ocr"]
+    },
+    {
+      "file": "Регламент о командировании.txt",
+      "title": "Регламент о командировании сотрудников МФТИ",
+      "documentNumber": "",
+      "documentType": "регламент",
+      "documentDate": "",
+      "category": "hr",
+      "legalStatus": "in_force",
+      "tags": ["командировка", "командирование", "поездки"]
+    },
+    {
+      "file": "Регламент поиска и подбора персонала.txt",
+      "title": "Регламент поиска и подбора персонала МФТИ",
+      "documentNumber": "1138",
+      "documentType": "регламент",
+      "documentDate": "",
+      "category": "hr",
+      "legalStatus": "in_force",
+      "tags": ["подбор", "персонал", "найм", "вакансии"]
+    },
+    {
+      "file": "Регламент поселения сотрудников.txt",
+      "title": "Регламент поселения сотрудников МФТИ",
+      "documentNumber": "",
+      "documentType": "регламент",
+      "documentDate": "",
+      "category": "hr",
+      "legalStatus": "in_force",
+      "tags": ["поселение", "общежитие", "жильё", "ocr"]
+    },
+    {
+      "file": "Регламент эксплуатации центра обработки данных МФТИ, Физтех.txt",
+      "title": "Регламент эксплуатации центра обработки данных (ЦОД) МФТИ",
+      "documentNumber": "1292-1",
+      "documentType": "регламент",
+      "documentDate": "2025-03-28",
+      "category": "it",
+      "legalStatus": "in_force",
+      "tags": ["цод", "серверы", "уит", "ocr"]
+    }
+  ]
+}

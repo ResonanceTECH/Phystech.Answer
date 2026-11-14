@@ -1,15 +1,16 @@
 import { api } from '@/shared/api/client'
-import type { User } from '../model/types'
+import type { Department, ProfilePatch, User } from '../model/types'
 
 export interface LoginInput {
-  login: string
+  email: string
   password: string
+  remember: boolean
 }
 
 export interface RegisterInput {
-  name: string
-  login: string
-  email?: string
+  firstName: string
+  lastName: string
+  email: string
   password: string
 }
 
@@ -19,6 +20,10 @@ export const authApi = {
   register: (input: RegisterInput) => api.post<User>('/v1/auth/register', input),
   logout: () => api.post<void>('/v1/auth/logout'),
   me: () => api.get<User>('/v1/auth/me'),
-  forgotPassword: (login: string) =>
-    api.post<{ ok: boolean }>('/v1/auth/forgot-password', { login }),
+  updateProfile: (patch: ProfilePatch) => api.patch<User>('/v1/users/me', patch),
+  departments: () => api.get<Department[]>('/v1/departments'),
+  forgotPassword: (email: string) =>
+    api.post<{ message: string }>('/v1/auth/forgot-password', { email }),
+  resetPassword: (token: string, newPassword: string) =>
+    api.post<{ message: string }>('/v1/auth/reset-password', { token, newPassword }),
 }

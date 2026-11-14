@@ -10,6 +10,8 @@ import (
 
 var ErrNotFound = errors.New("not found")
 var ErrConflict = errors.New("conflict")
+var ErrTokenExpired = errors.New("token expired")
+var ErrTokenUsed = errors.New("token already used")
 
 // Store is the persistence boundary. The Postgres implementation lives in
 // postgres.go; Memory is kept for tests and local dev without a database.
@@ -43,10 +45,19 @@ type Store interface {
 	ListUsers(ctx context.Context) ([]model.User, error)
 	CreateUser(ctx context.Context, user model.User, passwordHash string) (model.User, error)
 	GetUserByLogin(ctx context.Context, login string) (model.User, string, error) // user, passwordHash
+	GetUserByEmail(ctx context.Context, email string) (model.User, string, error) // user, passwordHash
 	GetUser(ctx context.Context, id string) (model.User, error)
-	CreateSession(ctx context.Context, userID string, ttl time.Duration) (string, error)
-	GetSessionUser(ctx context.Context, sessionID string) (model.User, error)
-	DeleteSession(ctx context.Context, sessionID string) error
+	UpdateUserProfile(ctx context.Context, id string, p model.ProfilePatch) (model.User, error)
+	UpdateUserPassword(ctx context.Context, id, passwordHash string) error
+	CreateSession(ctx context.Context, userID, tokenHash string, ttl time.Duration) error
+	GetSessionUser(ctx context.Context, tokenHash string) (model.User, error)
+	DeleteSession(ctx context.Context, tokenHash string) error
+	RevokeUserSessions(ctx context.Context, userID string) error
+	CreatePasswordResetToken(ctx context.Context, userID, tokenHash string, ttl time.Duration) error
+	// ConsumePasswordResetToken atomically marks the token used and returns
+	// its owner. Errors: ErrNotFound | ErrTokenExpired | ErrTokenUsed.
+	ConsumePasswordResetToken(ctx context.Context, tokenHash string) (model.User, error)
+	ListDepartments(ctx context.Context) ([]model.Department, error)
 
 	// Read marks.
 	MarkRead(ctx context.Context, docID, userID string) (time.Time, error)
@@ -103,7 +114,6 @@ type Store interface {
 	// Onboarding: folders/visibility, departments, user organisation,
 	// assignments, plans, notifications (onboarding.go).
 	UpdateDocumentAdmin(ctx context.Context, id string, title, folder, visibility *string) error
-	ListDepartments(ctx context.Context) ([]model.Department, error)
 	CreateDepartment(ctx context.Context, name string) (model.Department, error)
 	RenameDepartment(ctx context.Context, id, name string) error
 	DeleteDepartment(ctx context.Context, id string) error

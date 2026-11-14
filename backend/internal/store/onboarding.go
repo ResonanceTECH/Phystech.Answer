@@ -98,7 +98,7 @@ func (p *Postgres) DeleteDepartment(ctx context.Context, id string) error {
 
 // ---------- users: organisation ----------
 
-const profileSelect = `SELECT u.id, u.name, u.email, u.login, u.role, u.created_at,
+const profileSelect = `SELECT u.id, u.name, u.email, COALESCE(u.login, ''), u.role, u.created_at,
 	COALESCE(u.department_id, ''), COALESCE(d.name, ''), u.position, u.active
 	FROM users u LEFT JOIN departments d ON d.id = u.department_id`
 

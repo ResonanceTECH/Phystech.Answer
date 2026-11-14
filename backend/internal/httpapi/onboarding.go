@@ -81,18 +81,6 @@ func (s *Server) patchDocument(w http.ResponseWriter, r *http.Request) {
 
 // ---------- departments ----------
 
-func (s *Server) listDepartments(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUser(w, r); !ok {
-		return
-	}
-	list, err := s.store.ListDepartments(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list departments")
-		return
-	}
-	writeJSON(w, http.StatusOK, list)
-}
-
 type departmentRequest struct {
 	Name string `json:"name"`
 }

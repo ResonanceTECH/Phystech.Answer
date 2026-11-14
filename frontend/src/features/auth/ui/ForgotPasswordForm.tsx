@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link } from 'react-router-dom'
@@ -8,9 +8,11 @@ import { authErrorMessage } from '../lib/errors'
 import { AuthField } from './AuthField'
 
 const schema = z.object({
-  login: z.string().trim().min(1, 'Введите логин или email'),
+  email: z.email('Введите корректную почту'),
 })
 type FormValues = z.infer<typeof schema>
+
+const RESEND_COOLDOWN = 60
 
 interface Props {
   loginHref: string
@@ -18,26 +20,62 @@ interface Props {
 
 export function ForgotPasswordForm({ loginHref }: Props) {
   const [sentTo, setSentTo] = useState<string | null>(null)
+  const [cooldown, setCooldown] = useState(0)
   const { register, handleSubmit, setError, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { login: '' },
+    defaultValues: { email: '' },
   })
 
-  const onSubmit = handleSubmit(async (values) => {
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [cooldown])
+
+  const send = async (email: string) => {
     try {
-      await authApi.forgotPassword(values.login.trim())
-      setSentTo(values.login.trim())
+      await authApi.forgotPassword(email)
+      setSentTo(email)
+      setCooldown(RESEND_COOLDOWN)
     } catch (err) {
       setError('root', { message: authErrorMessage(err) })
     }
-  })
+  }
+
+  const onSubmit = handleSubmit((values) => send(values.email.trim()))
 
   if (sentTo) {
     return (
       <div className="pl-auth__done">
+        <div className="pl-auth__icon" aria-hidden>
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none">
+            <path
+              d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"
+              stroke="currentColor"
+              strokeWidth="1.6"
+            />
+            <path
+              d="m3.5 7 8.5 6 8.5-6M16 15l2.2 2.2L22.5 13"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
         <p className="pl-auth__alert pl-auth__alert--ok" role="status">
-          Если аккаунт с логином «{sentTo}» существует, инструкция по сбросу
-          пароля уже отправлена.
+          Если аккаунт с адресом «{sentTo}» существует, мы отправили письмо
+          со ссылкой для восстановления доступа. Проверьте папку «Спам».
+        </p>
+        <p className="pl-auth__resend">
+          Не пришло письмо?{' '}
+          <button
+            type="button"
+            disabled={cooldown > 0 || formState.isSubmitting}
+            onClick={() => send(sentTo)}
+          >
+            {cooldown > 0 ? `Отправить снова (${cooldown} с)` : 'Отправить снова'}
+          </button>
         </p>
         <Link to={loginHref} className="pl-btn pl-btn--ghost pl-auth__submit">
           Вернуться ко входу
@@ -55,17 +93,17 @@ export function ForgotPasswordForm({ loginHref }: Props) {
       ) : null}
 
       <AuthField
-        id="forgot-login"
-        label="Логин или email"
-        error={formState.errors.login?.message}
+        id="forgot-email"
+        label="Электронная почта"
+        error={formState.errors.email?.message}
       >
         <input
-          id="forgot-login"
+          id="forgot-email"
           className="pl-field__input"
-          type="text"
-          autoComplete="username"
-          placeholder="ivan"
-          {...register('login')}
+          type="email"
+          autoComplete="email"
+          placeholder="name@mipt.ru"
+          {...register('email')}
         />
       </AuthField>
 
@@ -74,7 +112,7 @@ export function ForgotPasswordForm({ loginHref }: Props) {
         className="pl-btn pl-btn--primary pl-auth__submit"
         disabled={formState.isSubmitting}
       >
-        {formState.isSubmitting ? 'Отправляем…' : 'Отправить инструкцию'}
+        {formState.isSubmitting ? 'Отправляем…' : 'Отправить ссылку'}
       </button>
     </form>
   )

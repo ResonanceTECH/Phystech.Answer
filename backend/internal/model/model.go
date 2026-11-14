@@ -30,12 +30,30 @@ type Document struct {
 }
 
 type User struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	Login     string    `json:"login,omitempty"`
-	Role      string    `json:"role,omitempty"` // employee|admin|expert
-	CreatedAt time.Time `json:"createdAt"`
+	ID                 string     `json:"id"`
+	Name               string     `json:"name"`
+	FirstName          string     `json:"firstName,omitempty"`
+	LastName           string     `json:"lastName,omitempty"`
+	Email              string     `json:"email"`
+	Login              string     `json:"login,omitempty"`
+	Role               string     `json:"role,omitempty"` // employee|admin|expert
+	EmployeeCategory   string     `json:"employeeCategory,omitempty"`
+	DepartmentID       string     `json:"departmentId,omitempty"`
+	Position           string     `json:"position,omitempty"`
+	OnboardingComplete bool       `json:"onboardingComplete"`
+	EmailVerifiedAt    *time.Time `json:"emailVerifiedAt,omitempty"`
+	CreatedAt          time.Time  `json:"createdAt"`
+}
+
+// ProfilePatch — поля, которые пользователь может менять сам (onboarding/profile).
+// Системные права (role) сюда не входят и клиентом не назначаются.
+type ProfilePatch struct {
+	FirstName          *string `json:"firstName"`
+	LastName           *string `json:"lastName"`
+	EmployeeCategory   *string `json:"employeeCategory"`
+	DepartmentID       *string `json:"departmentId"`
+	Position           *string `json:"position"`
+	OnboardingComplete *bool   `json:"onboardingComplete"`
 }
 
 type SourceFile struct {
@@ -186,6 +204,7 @@ type SearchHit struct {
 	SectionNumber string  `json:"sectionNumber,omitempty"`
 	Content       string  `json:"content"`
 	LegalStatus   string  `json:"legalStatus,omitempty"`
+	AccessLevel   string  `json:"accessLevel,omitempty"`
 	Rank          float64 `json:"rank"`
 }
 

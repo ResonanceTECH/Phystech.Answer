@@ -25,6 +25,18 @@ type Config struct {
 	StoragePath   string
 
 	WorkerConcurrency int
+
+	// Auth / mail.
+	SMTPHost           string
+	SMTPPort           string
+	SMTPUsername       string
+	SMTPPassword       string
+	SMTPFrom           string
+	AppPublicURL       string
+	ResetTTLMinutes    int
+	SessionTTLHours    int
+	RememberTTLHours   int
+	AllowedEmailDomain string
 }
 
 func Load() Config {
@@ -43,6 +55,17 @@ func Load() Config {
 		StorageDriver:     getEnv("STORAGE_DRIVER", "local"),
 		StoragePath:       getEnv("STORAGE_PATH", "./storage"),
 		WorkerConcurrency: getEnvInt("WORKER_CONCURRENCY", 2),
+
+		SMTPHost:           getEnv("SMTP_HOST", ""),
+		SMTPPort:           getEnv("SMTP_PORT", "1025"),
+		SMTPUsername:       getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:       getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:           getEnv("SMTP_FROM", "Физтех.Ответ <no-reply@phystech.answer>"),
+		AppPublicURL:       strings.TrimRight(getEnv("APP_PUBLIC_URL", "http://localhost:5173"), "/"),
+		ResetTTLMinutes:    getEnvInt("PASSWORD_RESET_TTL_MINUTES", 20),
+		SessionTTLHours:    getEnvInt("SESSION_TTL_HOURS", 72),
+		RememberTTLHours:   getEnvInt("REMEMBER_TTL_HOURS", 720),
+		AllowedEmailDomain: getEnv("ALLOWED_EMAIL_DOMAIN", ""),
 	}
 }
 

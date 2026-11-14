@@ -1,4 +1,4 @@
-/* auth-страницы: та же сцена, что у лендинга — токены pl-root, орбы, типографика. */
+/* Hallmark · v2.0.0 · shape: auth-cards · theme: custom violet-noir · genre: modern-minimal · job: sign in and recover account */
 /* critique: карточка — единственный новый мотив; всё остальное наследуется от landing.css */
 
 .pl-auth {
@@ -7,10 +7,6 @@
   flex-direction: column;
   min-height: 100svh;
   overflow-x: clip;
-
-  --pl-danger: #f87171;
-  --pl-danger-border: rgba(248, 113, 113, 0.35);
-  --pl-danger-bg: rgba(248, 113, 113, 0.09);
 }
 
 .pl-auth__top {
@@ -39,6 +35,9 @@
 }
 .pl-auth__back:hover {
   color: var(--pl-ink);
+}
+.pl-auth__back:active {
+  opacity: 0.7;
 }
 
 .pl-auth__main {
@@ -114,6 +113,9 @@
 .pl-field__link:hover {
   color: var(--pl-ink);
 }
+.pl-field__link:active {
+  opacity: 0.7;
+}
 
 .pl-field__input {
   width: 100%;
@@ -132,8 +134,9 @@
 .pl-field__input::placeholder {
   color: var(--pl-faint);
 }
-.pl-field__input:focus {
-  border-color: var(--pl-violet-bright);
+.pl-field__input:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--pl-violet-bright) 60%, white);
+  outline-offset: 2px;
 }
 .pl-field__input:-webkit-autofill {
   -webkit-text-fill-color: var(--pl-ink);
@@ -154,7 +157,7 @@
   border: 1px solid var(--pl-danger-border);
   border-radius: 1rem;
   background: var(--pl-danger-bg);
-  color: #fca5a5;
+  color: var(--pl-danger-ink);
   padding: 0.8rem 1.1rem;
   font-size: 0.875rem;
   line-height: 1.45;
@@ -170,11 +173,179 @@
   margin-top: 0.35rem;
 }
 
+/* ---------- поле пароля ---------- */
+
+.pl-pass {
+  position: relative;
+}
+.pl-pass .pl-field__input {
+  padding-right: 3rem;
+}
+.pl-pass__toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.45rem;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--pl-faint);
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease;
+}
+.pl-pass__toggle:hover {
+  color: var(--pl-ink);
+  background: var(--pl-violet-hover);
+}
+.pl-pass__toggle:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+/* ---------- чекбокс ---------- */
+
+.pl-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--pl-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.pl-check input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.pl-check__box {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--pl-border-strong);
+  background: var(--pl-violet-fill);
+  color: transparent;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+.pl-check input:checked + .pl-check__box {
+  background: var(--pl-violet);
+  border-color: var(--pl-violet);
+  color: var(--pl-white);
+}
+.pl-check input:focus-visible + .pl-check__box {
+  outline: 3px solid color-mix(in srgb, var(--pl-violet-bright) 60%, white);
+  outline-offset: 2px;
+}
+
+/* ---------- сила пароля ---------- */
+
+.pl-strength {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.pl-strength__bars {
+  display: flex;
+  flex: 1;
+  gap: 0.3rem;
+}
+.pl-strength__bar {
+  flex: 1;
+  height: 0.3rem;
+  border-radius: 999px;
+  background: var(--pl-violet-fill);
+  transition: background-color 0.25s ease;
+}
+.pl-strength__bar--on {
+  background: var(--pl-violet-bright);
+}
+.pl-strength__label {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--pl-faint);
+}
+
+/* ---------- селект ---------- */
+
+.pl-field__select {
+  appearance: none;
+  padding-right: 2.75rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--pl-faint) 50%),
+    linear-gradient(135deg, var(--pl-faint) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.35rem) 50%,
+    calc(100% - 0.95rem) 50%;
+  background-size:
+    0.4rem 0.4rem,
+    0.4rem 0.4rem;
+  background-repeat: no-repeat;
+}
+
+/* ---------- успех / повторная отправка ---------- */
+
+.pl-auth__resend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  color: var(--pl-faint);
+}
+.pl-auth__resend button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--pl-violet-bright);
+  cursor: pointer;
+}
+.pl-auth__resend button:hover {
+  color: var(--pl-ink);
+}
+.pl-auth__resend button:active {
+  opacity: 0.7;
+}
+.pl-auth__resend button:disabled {
+  color: var(--pl-faint);
+  cursor: default;
+}
+
+.pl-auth__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin-inline: auto;
+  color: var(--pl-violet-bright);
+}
 .pl-auth__done {
   margin-top: 1.9rem;
   display: flex;
   flex-direction: column;
   gap: 1.05rem;
+  text-align: center;
+}
+.pl-auth__done .pl-auth__alert {
+  text-align: left;
 }
 
 .pl-auth__alt {
@@ -189,6 +360,9 @@
 }
 .pl-auth__alt a:hover {
   color: var(--pl-ink);
+}
+.pl-auth__alt a:active {
+  opacity: 0.7;
 }
 
 .pl-auth__hint {

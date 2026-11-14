@@ -319,6 +319,9 @@ func (s *Server) listRelations(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to list relations")
 		return
 	}
+	if rels == nil {
+		rels = []model.DocumentRelation{}
+	}
 	writeJSON(w, http.StatusOK, rels)
 }
 

@@ -2,13 +2,15 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link } from 'react-router-dom'
 import { z } from 'zod'
-import { authApi, useAuthStore, type User } from '@/entities/user'
+import { useAuthStore, type User } from '@/entities/user'
 import { authErrorMessage } from '../lib/errors'
 import { AuthField } from './AuthField'
+import { PasswordInput } from './PasswordInput'
 
 const schema = z.object({
-  login: z.string().trim().min(1, 'Введите логин'),
+  email: z.string().trim().min(1, 'Введите почту'),
   password: z.string().min(1, 'Введите пароль'),
+  remember: z.boolean(),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -18,16 +20,15 @@ interface Props {
 }
 
 export function LoginForm({ forgotPasswordHref, onSuccess }: Props) {
-  const setUser = useAuthStore((s) => s.setUser)
+  const login = useAuthStore((s) => s.login)
   const { register, handleSubmit, setError, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { login: '', password: '' },
+    defaultValues: { email: '', password: '', remember: false },
   })
 
   const onSubmit = handleSubmit(async (values) => {
     try {
-      const user = await authApi.login(values)
-      setUser(user)
+      const user = await login(values)
       onSuccess?.(user)
     } catch (err) {
       setError('root', { message: authErrorMessage(err) })
@@ -42,14 +43,14 @@ export function LoginForm({ forgotPasswordHref, onSuccess }: Props) {
         </p>
       ) : null}
 
-      <AuthField id="login" label="Логин" error={formState.errors.login?.message}>
+      <AuthField id="email" label="Электронная почта" error={formState.errors.email?.message}>
         <input
-          id="login"
+          id="email"
           className="pl-field__input"
-          type="text"
+          type="email"
           autoComplete="username"
-          placeholder="ivan"
-          {...register('login')}
+          placeholder="name@mipt.ru"
+          {...register('email')}
         />
       </AuthField>
 
@@ -63,22 +64,37 @@ export function LoginForm({ forgotPasswordHref, onSuccess }: Props) {
           </Link>
         }
       >
-        <input
+        <PasswordInput
           id="password"
-          className="pl-field__input"
-          type="password"
           autoComplete="current-password"
           placeholder="••••••••"
+          error={!!formState.errors.password}
           {...register('password')}
         />
       </AuthField>
+
+      <label className="pl-check">
+        <input type="checkbox" {...register('remember')} />
+        <span className="pl-check__box" aria-hidden>
+          <svg viewBox="0 0 12 12" width="10" height="10" fill="none">
+            <path
+              d="M2 6.2 4.8 9 10 3"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+        Запомнить меня
+      </label>
 
       <button
         type="submit"
         className="pl-btn pl-btn--primary pl-auth__submit"
         disabled={formState.isSubmitting}
       >
-        {formState.isSubmitting ? 'Входим…' : 'Войти'}
+        {formState.isSubmitting ? 'Входим…' : 'Войти в аккаунт'}
       </button>
     </form>
   )

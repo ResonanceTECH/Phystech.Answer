@@ -1,8 +1,8 @@
-import { Navigate, createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter } from 'react-router-dom'
 import { AdminLayout } from '@/app/layouts/AdminLayout'
 import { AppLayout } from '@/app/layouts/AppLayout'
 import { ChatLayout } from '@/app/layouts/ChatLayout'
-import { RequireAdmin, RequireAuth } from '@/app/router/guards'
+import { PublicOnly, RequireAuth, RequireOnboarding } from '@/app/router/guards'
 import { paths } from '@/app/router/routePaths'
 import { AdminDashboardPage } from '@/pages/admin/dashboard/AdminDashboardPage'
 import { AdminDocumentsPage } from '@/pages/admin/documents/AdminDocumentsPage'
@@ -10,87 +10,109 @@ import { AdminStubPage } from '@/pages/admin/stub/AdminStubPage'
 import { DocumentUploadPage } from '@/pages/admin/upload/DocumentUploadPage'
 import { ForgotPasswordPage } from '@/pages/auth/forgot-password/ForgotPasswordPage'
 import { LoginPage } from '@/pages/auth/login/LoginPage'
+import { OnboardingPage } from '@/pages/auth/onboarding/OnboardingPage'
 import { RegisterPage } from '@/pages/auth/register/RegisterPage'
+import { ResetPasswordPage } from '@/pages/auth/reset-password/ResetPasswordPage'
 import { ChatPage } from '@/pages/chat/ChatPage'
 import { DocumentDetailsPage } from '@/pages/document-details/DocumentDetailsPage'
 import { DocumentsPage } from '@/pages/documents/DocumentsPage'
 import { HomePage } from '@/pages/home/HomePage'
 import { InstructionsPage } from '@/pages/instructions/InstructionsPage'
 import { LandingPage } from '@/pages/landing/LandingPage'
-import { OnboardingPage } from '@/pages/onboarding/OnboardingPage'
 import { NotFoundPage } from '@/pages/not-found/NotFoundPage'
+import { ProfilePage } from '@/pages/profile/ProfilePage'
+import { ReadingPlanPage } from '@/pages/reading-plan/ReadingPlanPage'
 
 export const router = createBrowserRouter([
+  // Гостевые страницы: авторизованных возвращаем в кабинет/админку.
   {
-    element: (
-      <RequireAuth>
-        <AppLayout />
-      </RequireAuth>
-    ),
+    element: <PublicOnly />,
     children: [
-      { path: paths.app.home, element: <HomePage /> },
-      { path: paths.app.onboarding, element: <OnboardingPage /> },
-      { path: paths.app.documents, element: <DocumentsPage /> },
-      { path: paths.app.document(':documentId'), element: <DocumentDetailsPage /> },
-      { path: paths.app.instructions, element: <InstructionsPage /> },
-      {
-        path: paths.app.chatNew,
-        element: <ChatLayout />,
-        children: [{ index: true, element: <ChatPage /> }],
-      },
-      {
-        path: '/app/chat/:conversationId',
-        element: <ChatLayout />,
-        children: [{ index: true, element: <ChatPage /> }],
-      },
-      { path: '*', element: <NotFoundPage /> },
+      { path: paths.auth.login, element: <LoginPage /> },
+      { path: paths.auth.register, element: <RegisterPage /> },
+      { path: paths.auth.forgotPassword, element: <ForgotPasswordPage /> },
+      { path: paths.auth.resetPassword, element: <ResetPasswordPage /> },
     ],
   },
+  // Онбординг: только для авторизованных без заполненного профиля.
   {
-    path: paths.admin.root,
-    element: (
-      <RequireAdmin>
-        <AdminLayout />
-      </RequireAdmin>
-    ),
+    element: <RequireOnboarding />,
+    children: [{ path: paths.auth.onboarding, element: <OnboardingPage /> }],
+  },
+  // Защищённая зона приложения.
+  {
+    element: <RequireAuth />,
     children: [
-      { index: true, element: <AdminDashboardPage /> },
-      { path: 'documents', element: <AdminDocumentsPage /> },
-      { path: 'documents/upload', element: <DocumentUploadPage /> },
-      { path: 'processing', element: <DocumentUploadPage /> },
       {
-        path: 'versions',
-        element: (
-          <AdminStubPage
-            title="Версии документов"
-            description="История редакций и сравнение версий — раздел в разработке, API на backend пока нет."
-          />
-        ),
-      },
-      {
-        path: 'conflicts',
-        element: (
-          <AdminStubPage
-            title="Конфликты документов"
-            description="Выявление противоречий между регламентами — раздел в разработке, API на backend пока нет."
-          />
-        ),
-      },
-      {
-        path: 'analytics',
-        element: (
-          <AdminStubPage
-            title="Аналитика"
-            description="Статистика запросов и популярных тем — раздел в разработке, API на backend пока нет."
-          />
-        ),
+        element: <AppLayout />,
+        children: [
+          { path: paths.app.home, element: <HomePage /> },
+          { path: paths.app.profile, element: <ProfilePage /> },
+          { path: paths.app.plan, element: <ReadingPlanPage /> },
+          { path: paths.app.documents, element: <DocumentsPage /> },
+          {
+            path: paths.app.document(':documentId'),
+            element: <DocumentDetailsPage />,
+          },
+          { path: paths.app.instructions, element: <InstructionsPage /> },
+          {
+            path: paths.app.chatNew,
+            element: <ChatLayout />,
+            children: [{ index: true, element: <ChatPage /> }],
+          },
+          {
+            path: '/app/chat/:conversationId',
+            element: <ChatLayout />,
+            children: [{ index: true, element: <ChatPage /> }],
+          },
+        ],
       },
     ],
   },
-  { path: paths.auth.login, element: <LoginPage /> },
-  { path: paths.auth.register, element: <RegisterPage /> },
-  { path: paths.auth.forgotPassword, element: <ForgotPasswordPage /> },
+  // Админка: admin/expert.
+  {
+    element: <RequireAuth adminOnly />,
+    children: [
+      {
+        path: paths.admin.root,
+        element: <AdminLayout />,
+        children: [
+          { index: true, element: <AdminDashboardPage /> },
+          { path: 'documents', element: <AdminDocumentsPage /> },
+          { path: 'documents/upload', element: <DocumentUploadPage /> },
+          // Загрузка показывает живой статус разбора каждого файла.
+          { path: 'processing', element: <DocumentUploadPage /> },
+          {
+            path: 'versions',
+            element: (
+              <AdminStubPage
+                title="Версии документов"
+                description="История редакций и сравнение версий — раздел в разработке, API на backend пока нет."
+              />
+            ),
+          },
+          {
+            path: 'conflicts',
+            element: (
+              <AdminStubPage
+                title="Конфликты документов"
+                description="Выявление противоречий между регламентами — раздел в разработке, API на backend пока нет."
+              />
+            ),
+          },
+          {
+            path: 'analytics',
+            element: (
+              <AdminStubPage
+                title="Аналитика"
+                description="Статистика запросов и популярных тем — раздел в разработке, API на backend пока нет."
+              />
+            ),
+          },
+        ],
+      },
+    ],
+  },
   { path: paths.home, element: <LandingPage /> },
-  // Совместимость со старыми ссылками.
-  { path: '/login', element: <Navigate to={paths.auth.login} replace /> },
+  { path: '*', element: <NotFoundPage /> },
 ])

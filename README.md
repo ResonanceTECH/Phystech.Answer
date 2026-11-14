@@ -64,6 +64,53 @@ docker compose logs -f backend ml # логи разбора документов
 docker compose stop               # остановить (данные сохраняются)
 docker compose down               # остановить и удалить контейнеры
 docker compose down -v            # + удалить данные (БД, индекс, скачанные модели)
+
+## Авторизация
+
+Полный цикл аккаунта реализован и работает поверх PostgreSQL:
+
+- **Маршруты фронта**: `/login`, `/register`, `/forgot-password`,
+  `/reset-password`, `/onboarding`, `/app/profile` (плюс `/app/*`, `/admin`).
+- **Сессии** — серверные, в БД хранится только SHA-256 хеш токена;
+  браузер получает HttpOnly+SameSite=Lax cookie (`Secure` при https).
+  «Запомнить меня» продлевает TTL сессии.
+- **Пароли** — Argon2id для новых аккаунтов; bcrypt-хеши ранних
+  пользователей продолжают проверяться.
+- **Восстановление** — одноразовые токены (20 мин по умолчанию),
+  ссылка ведёт на `APP_PUBLIC_URL/reset-password?token=…`; при сбросе
+  все сессии пользователя отзываются. Письма уходят через SMTP
+  (в compose — Mailpit, http://localhost:8025).
+- **Onboarding** — после регистрации пользователь уходит на `/onboarding`
+  (категория, подразделение, должность); до завершения защищённые
+  маршруты редиректят туда.
+- **Rate limiting** — на login/register/forgot/reset по IP.
+- **Роли** — `employee`, `admin`, `expert`; админ-раздел `/admin`
+  доступен `admin` и `expert` (проверка на backend).
+
+Демо-аккаунты (сеются при `SEED_DEMO_DATA=true`):
+`ivan.petrov@example.com / ivan123`, `maria.sidorova@example.com / maria123`,
+`admin@example.com / admin123`, `expert@example.com / expert123`.
+Также работает вход по старому логину (`ivan`, `admin`, …).
+
+### Персистентные данные (docker volumes)
+
+| Volume         | Что хранит                              |
+|----------------|-----------------------------------------|
+| `pgdata`       | База PostgreSQL (документы, пользователи, ответы) |
+| `ml-data`      | ML-индекс (`index.json`)                |
+| `backend-data` | Загруженные исходные файлы регламентов  |
+
+Данные переживают `docker compose down` и `restart`. Полный сброс —
+`docker compose down -v`.
+
+### Обслуживание
+
+```bash
+docker compose logs -f ml         # логи конкретного сервиса
+docker compose restart backend    # перезапуск одного сервиса
+docker compose up -d --build      # пересобрать и поднять в фоне
+docker compose ps                 # статус и health
+docker compose exec postgres psql -U fiztech_admin -d fiztech_answer  # psql
 ```
 
 Порты меняются переменными `FRONTEND_PORT`, `API_PORT`, `ML_PORT`, `DB_PORT` в `.env`.

@@ -2,16 +2,22 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { paths } from '@/app/router/routePaths'
 import { landingHero, landingNav } from '@/entities/landing/content'
-import { useSession } from '@/entities/session'
+import { useAuthStore } from '@/entities/user'
 import { cn } from '@/shared/lib/cn'
 import { getActiveSectionId, scrollToHash } from '@/shared/lib/scroll'
 
 const SECTION_IDS = landingNav.map((item) => item.id)
 
 export function LandingHeader() {
-  const { user } = useSession()
+  const user = useAuthStore((s) => s.user)
+  const authStatus = useAuthStore((s) => s.status)
+  const refreshUser = useAuthStore((s) => s.refreshUser)
+  // Лендинг публичный: проверяем сессию, чтобы показать «Мой кабинет» вместо «Войти».
+  useEffect(() => {
+    if (authStatus === 'unknown') void refreshUser()
+  }, [authStatus, refreshUser])
   const account = user
-    ? { to: paths.app.onboarding, label: 'Мой кабинет' }
+    ? { to: paths.app.home, label: 'Мой кабинет' }
     : { to: paths.auth.login, label: 'Войти' }
   const [scrolled, setScrolled] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)

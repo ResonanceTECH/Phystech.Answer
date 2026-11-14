@@ -3,12 +3,12 @@ package store
 import (
 	"context"
 	"errors"
+	"golang.org/x/crypto/bcrypt"
 	"log"
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
+	"phystech-answer/backend/internal/authx"
 	"phystech-answer/backend/internal/model"
 )
 
@@ -32,22 +32,24 @@ func SeedDemo(ctx context.Context, st Store, withDocs bool) {
 	}
 
 	hash := func(pw string) string {
-		h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+		h, err := authx.HashPassword(pw)
 		if err != nil {
-			log.Printf("seed: bcrypt: %v", err)
+			log.Printf("seed: hash: %v", err)
 			return ""
 		}
-		return string(h)
+		return h
 	}
+	// Демо-аккаунты: профиль уже настроен, онбординг пропускается.
+	demo := model.User{OnboardingComplete: true}
 
-	ivan, err := seedUser(ctx, st, model.User{Name: "Иван Петров", Email: "ivan.petrov@example.com", Login: "ivan", Role: "employee"}, hash("ivan123"))
+	ivan, err := seedUser(ctx, st, model.User{Name: "Иван Петров", FirstName: "Иван", LastName: "Петров", Email: "ivan.petrov@example.com", Login: "ivan", Role: "employee", EmployeeCategory: "employee", OnboardingComplete: demo.OnboardingComplete}, hash("ivan123"))
 	if err != nil {
 		log.Printf("seed: %v", err)
 		return
 	}
-	seedUser(ctx, st, model.User{Name: "Мария Сидорова", Email: "maria.sidorova@example.com", Login: "maria", Role: "employee"}, hash("maria123"))
-	seedUser(ctx, st, model.User{Name: "Администратор", Email: "admin@example.com", Login: "admin", Role: "admin"}, hash("admin123"))
-	seedUser(ctx, st, model.User{Name: "Эксперт Нормативки", Email: "expert@example.com", Login: "expert", Role: "expert"}, hash("expert123"))
+	seedUser(ctx, st, model.User{Name: "Мария Сидорова", FirstName: "Мария", LastName: "Сидорова", Email: "maria.sidorova@example.com", Login: "maria", Role: "employee", EmployeeCategory: "employee", OnboardingComplete: true}, hash("maria123"))
+	seedUser(ctx, st, model.User{Name: "Администратор", FirstName: "Администратор", LastName: "Базы знаний", Email: "admin@example.com", Login: "admin", Role: "admin", OnboardingComplete: true}, hash("admin123"))
+	seedUser(ctx, st, model.User{Name: "Эксперт Нормативки", FirstName: "Эксперт", LastName: "Нормативки", Email: "expert@example.com", Login: "expert", Role: "expert", OnboardingComplete: true}, hash("expert123"))
 	if !withDocs {
 		log.Printf("seed: demo users created (synthetic documents disabled)")
 		return
@@ -353,7 +355,7 @@ func seedUser(ctx context.Context, st Store, u model.User, hash string) (model.U
 var demoDepartments = []string{
 	"Научно-исследовательские подразделения",
 	"Финансово-экономическое управление",
-	"Управление информационных технологий",
+	"ЦИТ — центр информационных технологий",
 	"Отдел кадров",
 	"Культурно-массовый отдел",
 }
@@ -365,19 +367,20 @@ type demoPerson struct {
 var demoPeople = []demoPerson{
 	{"Иван Петров", "ivan", "ivan123", "employee", "Научно-исследовательские подразделения", "Руководитель проекта (новый сотрудник)"},
 	{"Мария Сидорова", "maria", "maria123", "employee", "Финансово-экономическое управление", "Экономист"},
-	{"Олег Смирнов", "oleg", "oleg123", "employee", "Управление информационных технологий", "Инженер первой линии поддержки"},
+	{"Олег Смирнов", "oleg", "oleg123", "employee", "ЦИТ — центр информационных технологий", "Инженер первой линии поддержки"},
 	{"Анна Кузнецова", "anna", "anna123", "employee", "Отдел кадров", "Специалист по подбору персонала"},
 }
 
-// SeedOrg creates demo departments and attaches demo users to them. Runs
-// only when no departments exist, so admin changes are never overwritten.
+// SeedOrg makes sure the demo departments exist (the MIPT directory from
+// migration 0004 is reused where names match) and attaches the demo
+// employees to them. Idempotent: existing department membership is kept.
 func SeedOrg(ctx context.Context, st Store) {
-	deps, err := st.ListDepartments(ctx)
-	if err != nil || len(deps) > 0 {
-		return
-	}
 	ids := map[string]string{}
 	for _, name := range demoDepartments {
+		if d, err := st.DepartmentByName(ctx, name); err == nil {
+			ids[name] = d.ID
+			continue
+		}
 		d, err := st.CreateDepartment(ctx, name)
 		if err != nil {
 			log.Printf("seed: department %q: %v", name, err)
@@ -385,6 +388,7 @@ func SeedOrg(ctx context.Context, st Store) {
 		}
 		ids[name] = d.ID
 	}
+	attached := 0
 	for _, p := range demoPeople {
 		u, _, err := st.GetUserByLogin(ctx, p.login)
 		if errors.Is(err, ErrNotFound) {
@@ -392,18 +396,27 @@ func SeedOrg(ctx context.Context, st Store) {
 			if herr != nil {
 				continue
 			}
-			u, err = st.CreateUser(ctx, model.User{Name: p.name, Login: p.login, Email: p.login + "@example.com", Role: p.role}, string(h))
+			first, last, _ := strings.Cut(p.name, " ")
+			u, err = st.CreateUser(ctx, model.User{Name: p.name, FirstName: first, LastName: last,
+				Login: p.login, Email: p.login + "@example.com", Role: p.role,
+				EmployeeCategory: "employee", OnboardingComplete: true}, string(h))
 		}
 		if err != nil {
 			log.Printf("seed: user %s: %v", p.login, err)
 			continue
 		}
+		prof, err := st.GetUserProfile(ctx, u.ID)
+		if err != nil || prof.DepartmentID != "" {
+			continue // already placed (possibly by an admin)
+		}
 		dep, pos := ids[p.dept], p.position
-		if err := st.UpdateUserOrg(ctx, u.ID, nil, &dep, &pos, nil); err != nil {
-			log.Printf("seed: org %s: %v", p.login, err)
+		if err := st.UpdateUserOrg(ctx, u.ID, nil, &dep, &pos, nil); err == nil {
+			attached++
 		}
 	}
-	log.Printf("seed: %d departments, %d demo employees", len(ids), len(demoPeople))
+	if attached > 0 {
+		log.Printf("seed: %d demo employees placed into departments", attached)
+	}
 }
 
 // demoAssignment refers to a document by number or by a title fragment.
@@ -439,7 +452,7 @@ var demoAssignments = []demoAssignment{
 	{"700", "Финансово-экономическое управление", "required", 30},
 	{"3065-1", "Финансово-экономическое управление", "optional", 0},
 	// ИТ, кадры, мероприятия.
-	{"1292-1", "Управление информационных технологий", "required", 30},
+	{"1292-1", "ЦИТ — центр информационных технологий", "required", 30},
 	{"подбора персонала", "Отдел кадров", "required", 30},
 	{"командировании", "Отдел кадров", "required", 30},
 	{"3897-1", "Культурно-массовый отдел", "required", 30},

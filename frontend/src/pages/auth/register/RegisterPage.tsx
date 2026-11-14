@@ -1,19 +1,19 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { paths } from '@/app/router/routePaths'
 import { RegisterForm } from '@/features/auth'
 import { AuthShell } from '../AuthShell'
-import { useAfterAuth, useRedirectIfAuthed } from '../lib'
 
 export function RegisterPage() {
-  const afterAuth = useAfterAuth()
-  useRedirectIfAuthed()
+  const navigate = useNavigate()
 
   return (
     <AuthShell
-      title="Регистрация"
-      subtitle="Создайте аккаунт сотрудника, чтобы задавать вопросы ассистенту."
+      title="Начните работу"
+      subtitle="Создайте аккаунт, чтобы получать инструкции по внутренним процедурам МФТИ и сохранять результаты работы."
     >
-      <RegisterForm onSuccess={afterAuth} />
+      <RegisterForm
+        onSuccess={() => navigate(paths.auth.onboarding, { replace: true })}
+      />
       <p className="pl-auth__alt">
         Уже есть аккаунт? <Link to={paths.auth.login}>Войти</Link>
       </p>

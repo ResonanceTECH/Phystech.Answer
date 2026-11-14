@@ -1,20 +1,18 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { authApi, useAuthStore, type User } from '@/entities/user'
+import { useAuthStore, type User } from '@/entities/user'
 import { authErrorMessage } from '../lib/errors'
 import { AuthField } from './AuthField'
+import { PasswordInput } from './PasswordInput'
+import { PasswordStrength } from './PasswordStrength'
 
 const schema = z
   .object({
-    name: z.string().trim().min(2, 'Введите имя'),
-    login: z
-      .string()
-      .trim()
-      .min(3, 'Логин от 3 символов')
-      .regex(/^[a-zA-Z0-9_.-]+$/, 'Только латиница, цифры и _.-'),
-    email: z.union([z.literal(''), z.email('Некорректный email')]),
-    password: z.string().min(6, 'Пароль от 6 символов'),
+    firstName: z.string().trim().min(1, 'Введите имя').max(80, 'Слишком длинное имя'),
+    lastName: z.string().trim().min(1, 'Введите фамилию').max(80, 'Слишком длинная фамилия'),
+    email: z.email('Некорректный email'),
+    password: z.string().min(12, 'Пароль от 12 символов'),
     confirm: z.string(),
   })
   .refine((v) => v.password === v.confirm, {
@@ -28,21 +26,21 @@ interface Props {
 }
 
 export function RegisterForm({ onSuccess }: Props) {
-  const setUser = useAuthStore((s) => s.setUser)
-  const { register, handleSubmit, setError, formState } = useForm<FormValues>({
+  const registerUser = useAuthStore((s) => s.register)
+  const { register, handleSubmit, setError, watch, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: '', login: '', email: '', password: '', confirm: '' },
+    defaultValues: { firstName: '', lastName: '', email: '', password: '', confirm: '' },
   })
+  const password = watch('password')
 
   const onSubmit = handleSubmit(async (values) => {
     try {
-      const user = await authApi.register({
-        name: values.name.trim(),
-        login: values.login.trim(),
-        email: values.email.trim() || undefined,
+      const user = await registerUser({
+        firstName: values.firstName.trim(),
+        lastName: values.lastName.trim(),
+        email: values.email.trim(),
         password: values.password,
       })
-      setUser(user)
       onSuccess?.(user)
     } catch (err) {
       setError('root', { message: authErrorMessage(err) })
@@ -57,39 +55,43 @@ export function RegisterForm({ onSuccess }: Props) {
         </p>
       ) : null}
 
-      <AuthField id="reg-name" label="Имя" error={formState.errors.name?.message}>
+      <AuthField
+        id="reg-first-name"
+        label="Имя"
+        error={formState.errors.firstName?.message}
+      >
         <input
-          id="reg-name"
+          id="reg-first-name"
           className="pl-field__input"
           type="text"
-          autoComplete="name"
-          placeholder="Иван Петров"
-          {...register('name')}
-        />
-      </AuthField>
-
-      <AuthField id="reg-login" label="Логин" error={formState.errors.login?.message}>
-        <input
-          id="reg-login"
-          className="pl-field__input"
-          type="text"
-          autoComplete="username"
-          placeholder="ivan.petrov"
-          {...register('login')}
+          autoComplete="given-name"
+          placeholder="Александр"
+          {...register('firstName')}
         />
       </AuthField>
 
       <AuthField
-        id="reg-email"
-        label="Email (необязательно)"
-        error={formState.errors.email?.message}
+        id="reg-last-name"
+        label="Фамилия"
+        error={formState.errors.lastName?.message}
       >
+        <input
+          id="reg-last-name"
+          className="pl-field__input"
+          type="text"
+          autoComplete="family-name"
+          placeholder="Иванов"
+          {...register('lastName')}
+        />
+      </AuthField>
+
+      <AuthField id="reg-email" label="Электронная почта" error={formState.errors.email?.message}>
         <input
           id="reg-email"
           className="pl-field__input"
           type="email"
           autoComplete="email"
-          placeholder="ivan@phystech.edu"
+          placeholder="name@mipt.ru"
           {...register('email')}
         />
       </AuthField>
@@ -99,14 +101,14 @@ export function RegisterForm({ onSuccess }: Props) {
         label="Пароль"
         error={formState.errors.password?.message}
       >
-        <input
+        <PasswordInput
           id="reg-password"
-          className="pl-field__input"
-          type="password"
           autoComplete="new-password"
-          placeholder="От 6 символов"
+          placeholder="От 12 символов"
+          error={!!formState.errors.password}
           {...register('password')}
         />
+        <PasswordStrength password={password} />
       </AuthField>
 
       <AuthField
@@ -114,12 +116,11 @@ export function RegisterForm({ onSuccess }: Props) {
         label="Повторите пароль"
         error={formState.errors.confirm?.message}
       >
-        <input
+        <PasswordInput
           id="reg-confirm"
-          className="pl-field__input"
-          type="password"
           autoComplete="new-password"
           placeholder="Ещё раз"
+          error={!!formState.errors.confirm}
           {...register('confirm')}
         />
       </AuthField>
@@ -129,7 +130,7 @@ export function RegisterForm({ onSuccess }: Props) {
         className="pl-btn pl-btn--primary pl-auth__submit"
         disabled={formState.isSubmitting}
       >
-        {formState.isSubmitting ? 'Создаём…' : 'Зарегистрироваться'}
+        {formState.isSubmitting ? 'Создаём…' : 'Создать аккаунт'}
       </button>
     </form>
   )

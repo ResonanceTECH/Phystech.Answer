@@ -1,19 +1,11 @@
 // Package store keeps the chunk index in memory and persists it to a JSON
-// snapshot. The knowledge base is small (tens of documents, ~1k chunks), so
-// brute-force cosine search and an in-memory BM25 index are instant; swap
-// for pgvector / OpenSearch when the corpus grows — the Store API stays.
-//
-// Indexes maintained:
-//   - BM25 over stemmed SearchText (context header + chunk body);
-//   - dense vectors (embedding of SearchText), cached by text hash so a
-//     re-sync does not recompute unchanged chunks;
-//   - amendment graph: which document changes / repeals which (by number).
+// snapshot. It is deliberately simple: the knowledge base is small enough
+// (tens of documents) that brute-force cosine search is instant. Swap this
+// for pgvector/Postgres when the corpus grows.
 package store
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log"
@@ -25,10 +17,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"phystech-answer/ml/internal/chunk"
 	"phystech-answer/ml/internal/model"
-	"phystech-answer/ml/internal/textproc"
 )
 
 // Embedder computes vectors for texts; implemented by the embed client.
@@ -44,28 +36,13 @@ type ScoredChunk struct {
 
 var ErrNotFound = errors.New("document not found")
 
-// Amendment links a newer act to the document it changes.
-type Amendment struct {
-	By     model.Document // the amending (newer) act
-	Target string         // target document ID
-}
-
 type Store struct {
 	mu        sync.RWMutex
 	path      string
-	docs      map[string]model.Document
-	chunks    map[string]model.Chunk
-	docChunks map[string][]string
-	norms     map[string]float64
-
-	// BM25
-	tf     map[string]map[string]int // chunkID -> term -> freq
-	dl     map[string]int            // chunkID -> length in terms
-	df     map[string]int            // term -> number of chunks
-	avgdl  float64
-	vecTag map[string][]float32 // sha1(SearchText) -> vector (embedding cache)
-
-	amendedBy map[string][]string // target docID -> amending docIDs
+	docs      map[string]model.Document // docID -> document (metadata + content)
+	chunks    map[string]model.Chunk    // chunkID -> chunk
+	docChunks map[string][]string       // docID -> chunk IDs
+	norms     map[string]float64        // chunkID -> |vector|
 }
 
 type snapshot struct {
@@ -80,10 +57,8 @@ func New(path string) *Store {
 		chunks:    map[string]model.Chunk{},
 		docChunks: map[string][]string{},
 		norms:     map[string]float64{},
-		vecTag:    map[string][]float32{},
 	}
 	s.load()
-	s.rebuildLocked()
 	return s
 }
 
@@ -94,58 +69,40 @@ func (s *Store) Stats() (docs, chunks int) {
 	return len(s.docs), len(s.chunks)
 }
 
-// VectorCoverage reports how many chunks have embeddings.
-func (s *Store) VectorCoverage() (withVec, total int) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, c := range s.chunks {
-		if len(c.Vector) > 0 {
-			withVec++
-		}
-	}
-	return withVec, len(s.chunks)
-}
-
 // ListDocuments returns indexed document metadata (without content).
 func (s *Store) ListDocuments() []model.Document {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]model.Document, 0, len(s.docs))
 	for _, d := range s.docs {
-		out = append(out, model.Document{ID: d.ID, Title: d.Title, Tags: d.Tags, Number: d.Number, Type: d.Type, Date: d.Date})
+		out = append(out, model.Document{
+			ID: d.ID, Title: d.Title, Tags: d.Tags,
+			DocumentNumber: d.DocumentNumber, DocumentType: d.DocumentType,
+			DocumentDate: d.DocumentDate, Category: d.Category,
+			LegalStatus: d.LegalStatus,
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Title < out[j].Title })
 	return out
 }
 
-// GetDocument returns a document with content.
-func (s *Store) GetDocument(id string) (model.Document, bool) {
+// Doc returns the stored metadata of a document (for chunk enrichment).
+func (s *Store) Doc(id string) (model.Document, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	d, ok := s.docs[id]
 	return d, ok
 }
 
-// DocChunks returns chunks of a document in order.
-func (s *Store) DocChunks(docID string) []model.Chunk {
+// Chunks returns all chunks of a document in index order.
+func (s *Store) Chunks(docID string) []model.Chunk {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	ids := s.docChunks[docID]
 	out := make([]model.Chunk, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, s.chunks[id])
-	}
-	return out
-}
-
-// AmendedBy returns newer acts that change the given document.
-func (s *Store) AmendedBy(docID string) []model.Document {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	var out []model.Document
-	for _, id := range s.amendedBy[docID] {
-		if d, ok := s.docs[id]; ok {
-			out = append(out, d)
+		if c, ok := s.chunks[id]; ok {
+			out = append(out, c)
 		}
 	}
 	return out
@@ -155,13 +112,41 @@ func (s *Store) AmendedBy(docID string) []model.Document {
 // previous chunks of the same document.
 func (s *Store) Upsert(ctx context.Context, doc model.Document, emb Embedder) error {
 	chunks := chunk.Split(doc)
-	s.embedChunks(ctx, chunks, emb)
+	if len(chunks) == 0 {
+		return nil
+	}
+
+	if emb != nil {
+		texts := make([]string, len(chunks))
+		for i, c := range chunks {
+			texts[i] = c.Text
+		}
+		vecs, err := emb.Embed(ctx, texts)
+		if err != nil {
+			log.Printf("store: embed %q: %v (chunks kept without vectors)", doc.Title, err)
+		} else {
+			for i := range chunks {
+				if i < len(vecs) {
+					chunks[i].Vector = vecs[i]
+				}
+			}
+		}
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.removeChunksLocked(doc.ID)
-	s.putLocked(doc, chunks)
-	s.rebuildLocked()
+	s.docs[doc.ID] = doc
+	ids := make([]string, 0, len(chunks))
+	for i := range chunks {
+		chunks[i].ID = doc.ID + "#" + strconv.Itoa(i)
+		if n := vectorNorm(chunks[i].Vector); n > 0 {
+			s.norms[chunks[i].ID] = n
+		}
+		s.chunks[chunks[i].ID] = chunks[i]
+		ids = append(ids, chunks[i].ID)
+	}
+	s.docChunks[doc.ID] = ids
 	return s.saveLocked()
 }
 
@@ -174,7 +159,6 @@ func (s *Store) Delete(_ context.Context, id string) error {
 	}
 	s.removeChunksLocked(id)
 	delete(s.docs, id)
-	s.rebuildLocked()
 	return s.saveLocked()
 }
 
@@ -187,19 +171,40 @@ func (s *Store) ReplaceAll(ctx context.Context, docs []model.Document, emb Embed
 		chunks []model.Chunk
 	}
 	prepped := make([]prepared, 0, len(docs))
-	var all []model.Chunk
 	for _, d := range docs {
 		cs := chunk.Split(d)
+		if len(cs) == 0 {
+			continue
+		}
 		prepped = append(prepped, prepared{doc: d, chunks: cs})
-		all = append(all, cs...)
 	}
-	s.embedChunks(ctx, all, emb)
-	// embedChunks filled `all`; copy vectors back per document.
-	i := 0
-	for p := range prepped {
-		for c := range prepped[p].chunks {
-			prepped[p].chunks[c].Vector = all[i].Vector
-			i++
+
+	if emb != nil {
+		// Embed in batches to stay within request size limits. Once the
+		// embedder fails, skip the remaining calls — chunks stay vectorless
+		// and remain reachable via lexical search.
+		const batch = 32
+		embedOK := true
+		for i := 0; i < len(prepped) && embedOK; i++ {
+			for j := 0; j < len(prepped[i].chunks); j += batch {
+				end := j + batch
+				if end > len(prepped[i].chunks) {
+					end = len(prepped[i].chunks)
+				}
+				texts := make([]string, end-j)
+				for k := j; k < end; k++ {
+					texts[k-j] = prepped[i].chunks[k].Text
+				}
+				vecs, err := emb.Embed(ctx, texts)
+				if err != nil {
+					log.Printf("store: embed batch: %v (chunks kept without vectors)", err)
+					embedOK = false
+					break
+				}
+				for k := j; k < end && k-j < len(vecs); k++ {
+					prepped[i].chunks[k].Vector = vecs[k-j]
+				}
+			}
 		}
 	}
 
@@ -210,60 +215,61 @@ func (s *Store) ReplaceAll(ctx context.Context, docs []model.Document, emb Embed
 	s.docChunks = map[string][]string{}
 	s.norms = map[string]float64{}
 	for _, p := range prepped {
-		s.putLocked(p.doc, p.chunks)
+		ids := make([]string, 0, len(p.chunks))
+		for i := range p.chunks {
+			p.chunks[i].ID = p.doc.ID + "#" + strconv.Itoa(i)
+			if n := vectorNorm(p.chunks[i].Vector); n > 0 {
+				s.norms[p.chunks[i].ID] = n
+			}
+			s.chunks[p.chunks[i].ID] = p.chunks[i]
+			ids = append(ids, p.chunks[i].ID)
+		}
+		s.docChunks[p.doc.ID] = ids
+		s.docs[p.doc.ID] = p.doc
 	}
-	s.rebuildLocked()
 	return s.saveLocked()
 }
 
-// embedChunks fills vectors, reusing cached embeddings for unchanged text.
-func (s *Store) embedChunks(ctx context.Context, chunks []model.Chunk, emb Embedder) {
-	if emb == nil || len(chunks) == 0 {
-		return
+// SearchVector returns chunks ranked by cosine similarity to queryVec.
+// Results are sorted descending; the caller applies the score threshold.
+func (s *Store) SearchVector(queryVec []float32, topK int) []ScoredChunk {
+	if len(queryVec) == 0 {
+		return nil
 	}
-	var todo []int
-	s.mu.RLock()
-	for i := range chunks {
-		if v, ok := s.vecTag[textHash(chunks[i].SearchText())]; ok {
-			chunks[i].Vector = v
-		} else {
-			todo = append(todo, i)
-		}
+	qn := vectorNorm(queryVec)
+	if qn == 0 {
+		return nil
 	}
-	s.mu.RUnlock()
 
-	const batch = 16
-	for start := 0; start < len(todo); start += batch {
-		end := min(start+batch, len(todo))
-		texts := make([]string, 0, end-start)
-		for _, idx := range todo[start:end] {
-			texts = append(texts, chunks[idx].SearchText())
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	scored := make([]ScoredChunk, 0, len(s.chunks))
+	for _, c := range s.chunks {
+		if len(c.Vector) == 0 {
+			continue
 		}
-		vecs, err := emb.Embed(ctx, texts)
-		if err != nil {
-			log.Printf("store: embed batch: %v (chunks kept without vectors, BM25 still works)", err)
-			return
-		}
-		for k, idx := range todo[start:end] {
-			if k < len(vecs) {
-				chunks[idx].Vector = vecs[k]
-			}
-		}
+		scored = append(scored, ScoredChunk{Chunk: c, Score: cosine(queryVec, qn, c.Vector, s.norms[c.ID])})
 	}
-	if len(todo) > 0 {
-		log.Printf("store: embedded %d chunks (%d from cache)", len(todo), len(chunks)-len(todo))
-	}
+	return topN(scored, topK)
 }
 
-func (s *Store) putLocked(doc model.Document, chunks []model.Chunk) {
-	s.docs[doc.ID] = doc
-	ids := make([]string, 0, len(chunks))
-	for i := range chunks {
-		chunks[i].ID = doc.ID + "#" + strconv.Itoa(i)
-		s.chunks[chunks[i].ID] = chunks[i]
-		ids = append(ids, chunks[i].ID)
+// SearchLexical ranks chunks by token overlap with the query. Used when the
+// embedding service is unavailable. Scores are heuristics in ~[0,1].
+func (s *Store) SearchLexical(query string, topK int) []ScoredChunk {
+	terms := queryTerms(query)
+	if len(terms) == 0 {
+		return nil
 	}
-	s.docChunks[doc.ID] = ids
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	scored := make([]ScoredChunk, 0, len(s.chunks))
+	for _, c := range s.chunks {
+		scored = append(scored, ScoredChunk{Chunk: c, Score: lexicalScore(terms, c)})
+	}
+	return topN(scored, topK)
 }
 
 func (s *Store) removeChunksLocked(docID string) {
@@ -274,179 +280,18 @@ func (s *Store) removeChunksLocked(docID string) {
 	delete(s.docChunks, docID)
 }
 
-// rebuildLocked recomputes BM25 statistics, vector norms, the embedding
-// cache and the amendment graph. O(corpus) — fine for this scale.
-func (s *Store) rebuildLocked() {
-	s.tf = make(map[string]map[string]int, len(s.chunks))
-	s.dl = make(map[string]int, len(s.chunks))
-	s.df = map[string]int{}
-	s.norms = make(map[string]float64, len(s.chunks))
-	total := 0
-	for id, c := range s.chunks {
-		terms := textproc.Terms(c.SearchText())
-		freq := map[string]int{}
-		for _, t := range terms {
-			freq[t]++
-		}
-		for t := range freq {
-			s.df[t]++
-		}
-		s.tf[id] = freq
-		s.dl[id] = len(terms)
-		total += len(terms)
-		if len(c.Vector) > 0 {
-			s.norms[id] = vectorNorm(c.Vector)
-			s.vecTag[textHash(c.SearchText())] = c.Vector
-		}
-	}
-	if len(s.chunks) > 0 {
-		s.avgdl = float64(total) / float64(len(s.chunks))
-	}
-	s.amendedBy = buildAmendments(s.docs)
-}
-
-// ---------- search ----------
-
-const (
-	bm25K1 = 1.2
-	bm25B  = 0.75
-)
-
-// SearchBM25 ranks chunks with Okapi BM25 over stemmed terms.
-func (s *Store) SearchBM25(query string, topK int) []ScoredChunk {
-	qTerms := uniq(textproc.Terms(query))
-	if len(qTerms) == 0 {
-		return nil
-	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	n := float64(len(s.chunks))
-	scored := make([]ScoredChunk, 0, 64)
-	for id, freq := range s.tf {
-		score := 0.0
-		for _, q := range qTerms {
-			f := float64(freq[q])
-			if f == 0 {
-				continue
-			}
-			df := float64(s.df[q])
-			idf := math.Log(1 + (n-df+0.5)/(df+0.5))
-			score += idf * f * (bm25K1 + 1) / (f + bm25K1*(1-bm25B+bm25B*float64(s.dl[id])/s.avgdl))
-		}
-		if score > 0 {
-			scored = append(scored, ScoredChunk{Chunk: s.chunks[id], Score: score})
-		}
-	}
-	return topN(scored, topK)
-}
-
-// KnownTerms counts how many of the (stemmed) terms occur in the corpus.
-func (s *Store) KnownTerms(terms []string) int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	n := 0
-	for _, t := range terms {
-		if s.df[t] > 0 {
-			n++
-		}
-	}
-	return n
-}
-
-// SearchVector returns chunks ranked by cosine similarity to queryVec.
-func (s *Store) SearchVector(queryVec []float32, topK int) []ScoredChunk {
-	qn := vectorNorm(queryVec)
-	if qn == 0 {
-		return nil
-	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	scored := make([]ScoredChunk, 0, len(s.chunks))
-	for id, c := range s.chunks {
-		if len(c.Vector) == 0 {
-			continue
-		}
-		scored = append(scored, ScoredChunk{Chunk: c, Score: cosine(queryVec, qn, c.Vector, s.norms[id])})
-	}
-	return topN(scored, topK)
-}
-
-// BestChunkOf returns the chunk of docID that best matches the query
-// (BM25), or the first chunk when nothing matches.
-func (s *Store) BestChunkOf(docID, query string) (model.Chunk, bool) {
-	for _, sc := range s.SearchBM25(query, 0) {
-		if sc.Chunk.DocID == docID {
-			return sc.Chunk, true
-		}
-	}
-	cs := s.DocChunks(docID)
-	if len(cs) == 0 {
-		return model.Chunk{}, false
-	}
-	return cs[0], true
-}
-
-// ---------- amendments ----------
-
-var amendCtx = regexp.MustCompile(`(?i)(изменени|дополнени|утратившим|утратившими|отмен|в следующей редакции|в редакции)`)
-
-// buildAmendments detects "A changes B": A's text mentions B's number near
-// an amendment keyword, and A is not older than B.
-func buildAmendments(docs map[string]model.Document) map[string][]string {
-	out := map[string][]string{}
-	for _, a := range docs {
-		text := a.Content
-		for _, b := range docs {
-			if a.ID == b.ID || b.Number == "" || len(b.Number) < 3 {
-				continue
-			}
-			if a.Date != "" && b.Date != "" && a.Date < b.Date {
-				continue
-			}
-			numRe := regexp.MustCompile(`(?:№|N)\s*` + regexp.QuoteMeta(b.Number) + `\b`)
-			for _, loc := range numRe.FindAllStringIndex(text, -1) {
-				from := max(0, loc[0]-300)
-				to := min(len(text), loc[1]+200)
-				if amendCtx.MatchString(text[from:to]) {
-					out[b.ID] = append(out[b.ID], a.ID)
-					break
-				}
-			}
-		}
-	}
-	return out
-}
-
-// ---------- helpers ----------
-
 func topN(scored []ScoredChunk, k int) []ScoredChunk {
-	sort.Slice(scored, func(i, j int) bool {
-		if scored[i].Score != scored[j].Score {
-			return scored[i].Score > scored[j].Score
-		}
-		return scored[i].Chunk.ID < scored[j].Chunk.ID
-	})
+	sort.Slice(scored, func(i, j int) bool { return scored[i].Score > scored[j].Score })
+	// Drop zero-score tail.
+	end := len(scored)
+	for end > 0 && scored[end-1].Score <= 0 {
+		end--
+	}
+	scored = scored[:end]
 	if k > 0 && len(scored) > k {
 		scored = scored[:k]
 	}
 	return scored
-}
-
-func uniq(xs []string) []string {
-	seen := map[string]bool{}
-	out := xs[:0]
-	for _, x := range xs {
-		if !seen[x] {
-			seen[x] = true
-			out = append(out, x)
-		}
-	}
-	return out
-}
-
-func textHash(s string) string {
-	h := sha1.Sum([]byte(s))
-	return hex.EncodeToString(h[:])
 }
 
 func cosine(a []float32, anorm float64, b []float32, bnorm float64) float64 {
@@ -468,7 +313,160 @@ func vectorNorm(v []float32) float64 {
 	return math.Sqrt(sum)
 }
 
-// ---------- persistence ----------
+var tokenRe = regexp.MustCompile(`[\p{L}\p{N}]+`)
+
+// ruStopwords are frequent function words that carry no retrieval signal.
+var ruStopwords = map[string]bool{
+	"и": true, "в": true, "на": true, "что": true, "как": true, "для": true,
+	"по": true, "от": true, "до": true, "не": true, "но": true, "а": true,
+	"с": true, "со": true, "к": true, "у": true, "о": true, "об": true,
+	"это": true, "тот": true, "так": true, "же": true, "ли": true, "бы": true,
+	"при": true, "про": true, "без": true, "под": true, "над": true, "из": true,
+	"за": true, "между": true, "через": true, "после": true, "перед": true,
+	"во": true, "ко": true, "его": true, "её": true, "их": true, "он": true,
+	"она": true, "они": true, "мы": true, "вы": true, "я": true, "мне": true,
+	"нам": true, "вам": true, "свой": true, "своя": true, "своё": true,
+	"который": true, "которая": true, "которые": true, "если": true,
+	"также": true, "или": true, "уже": true, "еще": true, "ещё": true,
+	"был": true, "была": true, "были": true, "есть": true, "быт": true,
+}
+
+// normalizeToken unifies ё/е spelling so "счёт" and "счет" match.
+func normalizeToken(s string) string {
+	return strings.ReplaceAll(s, "ё", "е")
+}
+
+// queryTerms extracts lowercase word tokens (len >= 3, stopwords removed)
+// from the query.
+func queryTerms(q string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range tokenRe.FindAllString(normalizeToken(strings.ToLower(q)), -1) {
+		if utf8.RuneCountInString(t) < 3 || seen[t] || ruStopwords[t] {
+			continue
+		}
+		seen[t] = true
+		out = append(out, t)
+	}
+	return out
+}
+
+func chunkTerms(c model.Chunk) map[string]bool {
+	text := c.DocTitle + " " + strings.Join(c.Tags, " ") + " " + c.Section + " " + c.Text
+	set := map[string]bool{}
+	for _, t := range tokenRe.FindAllString(normalizeToken(strings.ToLower(text)), -1) {
+		if utf8.RuneCountInString(t) >= 3 {
+			set[t] = true
+		}
+	}
+	return set
+}
+
+// termMatch reports whether query term q matches chunk term t. Exact match
+// always wins; otherwise a long common rune-prefix counts as a match so
+// that Russian word forms line up ("конференцию" ~ "конференции",
+// "командировка" ~ "командировки").
+func termMatch(q, t string) bool {
+	if q == t {
+		return true
+	}
+	qr, tr := []rune(q), []rune(t)
+	shorter := len(qr)
+	if len(tr) < shorter {
+		shorter = len(tr)
+	}
+	common := 0
+	for common < shorter && qr[common] == tr[common] {
+		common++
+	}
+	// Need a substantial shared stem: at least 5 runes and almost the whole
+	// shorter word, so unrelated terms don't collide.
+	return common >= 5 && common >= shorter-3
+}
+
+// synonyms maps colloquial query terms to domain vocabulary used in the
+// regulations. It compensates for the vocabulary gap that embeddings would
+// normally cover (e.g. "сломался компьютер" → "неисправность оборудования").
+var synonyms = map[string][]string{
+	"компьютер":     {"оборудование", "оргтехника", "техника", "ноутбук"},
+	"ноутбук":       {"оборудование", "оргтехника", "техника"},
+	"принтер":       {"оборудование", "оргтехника"},
+	"сломался":      {"неисправность", "неисправен", "ремонт", "поломка"},
+	"сломалась":     {"неисправность", "неисправен", "ремонт", "поломка"},
+	"не работает":   {"неисправность", "ремонт"},
+	"деньги":        {"средства", "финансирование", "финансы", "оплата"},
+	"получить":      {"выдача", "получение", "предоставление"},
+	"проект":        {"грант", "хоздоговор", "договор"},
+	"грант":         {"проект", "соглашение", "грантодатель"},
+	"смета":         {"бюджет", "расходы", "сметный"},
+	"бюджет":        {"смета", "расходы", "бюджетный"},
+	"нанять":        {"подбор", "найм", "персонал"},
+	"сотрудник":     {"персонал", "кандидат", "работник"},
+	"сотрудника":    {"персонал", "кандидат", "работник"},
+	"вакансия":      {"подбор", "кандидат", "персонал"},
+	"резюме":        {"кандидат", "подбор"},
+	"командировка":  {"поездка", "командирован"},
+	"командировку":  {"поездка", "командирован"},
+	"конференция":   {"мероприятие", "конференций"},
+	"аванс":         {"выдача", "деньги", "отчет"},
+	"отчет":         {"отчетность", "авансовый"},
+	"заимствование": {"перемещение", "заем", "заимствования"},
+	"поддержка":     {"обращение", "заявка", "цит"},
+	"обращение":     {"заявка", "поддержка", "помощь"},
+	"заявка":        {"заявление", "обращение"},
+	"заявление":     {"заявка", "обращение"},
+	"счет":          {"флс", "финансово", "лицевой"},
+	"счёт":          {"флс", "финансово", "лицевой"},
+	"руководитель":  {"начальник", "подразделения"},
+}
+
+// termMatches reports whether query term q matches any chunk term,
+// considering morphological variants and domain synonyms.
+func termMatches(q string, terms map[string]bool) bool {
+	candidates := append([]string{q}, synonyms[q]...)
+	for _, cand := range candidates {
+		for t := range terms {
+			if termMatch(cand, t) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func lexicalScore(queryTerms []string, c model.Chunk) float64 {
+	terms := chunkTerms(c)
+	matched := 0
+	for _, q := range queryTerms {
+		if termMatches(q, terms) {
+			matched++
+		}
+	}
+	if matched == 0 {
+		return 0
+	}
+	overlap := float64(matched) / float64(len(queryTerms))
+	// Boost when the document title or tags match the query.
+	titleTerms := map[string]bool{}
+	titleText := normalizeToken(strings.ToLower(c.DocTitle + " " + strings.Join(c.Tags, " ")))
+	for _, t := range tokenRe.FindAllString(titleText, -1) {
+		if utf8.RuneCountInString(t) >= 3 {
+			titleTerms[t] = true
+		}
+	}
+	bonus := 0.0
+	for _, q := range queryTerms {
+		if termMatches(q, titleTerms) {
+			bonus = 0.15
+			break
+		}
+	}
+	score := overlap*0.85 + bonus
+	if score > 0.95 {
+		score = 0.95
+	}
+	return score
+}
 
 func (s *Store) saveLocked() error {
 	if s.path == "" {
@@ -513,17 +511,12 @@ func (s *Store) load() {
 	for id, d := range snap.Docs {
 		s.docs[id] = d
 	}
-	sort.Slice(snap.Chunks, func(i, j int) bool { return chunkOrder(snap.Chunks[i].ID) < chunkOrder(snap.Chunks[j].ID) })
 	for _, c := range snap.Chunks {
 		s.chunks[c.ID] = c
 		s.docChunks[c.DocID] = append(s.docChunks[c.DocID], c.ID)
+		if n := vectorNorm(c.Vector); n > 0 {
+			s.norms[c.ID] = n
+		}
 	}
 	log.Printf("store: loaded %d documents, %d chunks from %s", len(s.docs), len(s.chunks), s.path)
-}
-
-// chunkOrder sorts "doc#12" after "doc#2".
-func chunkOrder(id string) string {
-	doc, n, _ := strings.Cut(id, "#")
-	i, _ := strconv.Atoi(n)
-	return doc + "#" + strconv.FormatInt(int64(i)+1_000_000, 10)
 }

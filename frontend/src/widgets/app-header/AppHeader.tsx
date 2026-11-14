@@ -1,49 +1,37 @@
-import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined'
 import LogoutIcon from '@mui/icons-material/Logout'
 import MenuIcon from '@mui/icons-material/Menu'
-import RouteOutlinedIcon from '@mui/icons-material/RouteOutlined'
 import {
   AppBar,
   Avatar,
-  Box,
-  Divider,
+  Chip,
   IconButton,
-  ListItemIcon,
-  Menu,
-  MenuItem,
   Toolbar,
+  Tooltip,
   Typography,
 } from '@mui/material'
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import { paths } from '@/app/router/routePaths'
-import { ROLE_LABEL, canManageDocuments, useLogout, useSession } from '@/entities/session'
-import { config } from '@/shared/config/env'
+import { isAdminRole, useAuthStore } from '@/entities/user'
 import { useAppUiStore } from '@/shared/lib'
+import { config } from '@/shared/config/env'
 
 interface AppHeaderProps {
   title?: string
 }
 
-function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join('')
+function initials(firstName: string, lastName: string): string {
+  return `${firstName.slice(0, 1)}${lastName.slice(0, 1)}`.toUpperCase() || '•'
 }
 
 export function AppHeader({ title }: AppHeaderProps) {
   const setMobileNavOpen = useAppUiStore((s) => s.setMobileNavOpen)
-  const { user } = useSession()
-  const logout = useLogout()
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
 
-  const go = (to: string) => {
-    setAnchor(null)
-    navigate(to)
+  const onLogout = async () => {
+    await logout()
+    navigate(paths.auth.login, { replace: true })
   }
 
   return (
@@ -69,78 +57,57 @@ export function AppHeader({ title }: AppHeaderProps) {
         <Typography variant="h6" noWrap sx={{ flexGrow: 1, fontWeight: 600 }}>
           {title ?? config.appName}
         </Typography>
-
-        {user && (
-          <>
-            <Box
-              component="button"
-              type="button"
-              onClick={(e) => setAnchor(e.currentTarget)}
-              aria-label="Меню пользователя"
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1.25,
-                border: 0,
-                bgcolor: 'transparent',
-                cursor: 'pointer',
-                borderRadius: 999,
-                pl: 0.5,
-                pr: { xs: 0.5, sm: 1.5 },
-                py: 0.5,
-                color: 'inherit',
-                font: 'inherit',
-                '&:hover': { bgcolor: 'action.hover' },
-              }}
-            >
-              <Avatar sx={{ width: 34, height: 34, fontSize: 14, bgcolor: 'primary.main' }}>
-                {initials(user.name)}
-              </Avatar>
-              <Box sx={{ textAlign: 'left', display: { xs: 'none', sm: 'block' } }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
-                  {user.name}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                  {ROLE_LABEL[user.role] ?? user.role}
-                </Typography>
-              </Box>
-            </Box>
-            <Menu
-              anchorEl={anchor}
-              open={Boolean(anchor)}
-              onClose={() => setAnchor(null)}
-              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-            >
-              <MenuItem onClick={() => go(paths.app.onboarding)}>
-                <ListItemIcon>
-                  <RouteOutlinedIcon fontSize="small" />
-                </ListItemIcon>
-                Мой план ознакомления
-              </MenuItem>
-              {canManageDocuments(user) && (
-                <MenuItem onClick={() => go(paths.admin.root)}>
-                  <ListItemIcon>
-                    <AdminPanelSettingsOutlinedIcon fontSize="small" />
-                  </ListItemIcon>
-                  Администрирование
-                </MenuItem>
-              )}
-              <Divider />
-              <MenuItem
-                onClick={() => {
-                  setAnchor(null)
-                  logout.mutate(undefined, { onSettled: () => navigate(paths.auth.login, { replace: true }) })
-                }}
-              >
-                <ListItemIcon>
-                  <LogoutIcon fontSize="small" />
-                </ListItemIcon>
-                Выйти
-              </MenuItem>
-            </Menu>
-          </>
+        {config.demoMode && (
+          <Chip
+            size="small"
+            color="warning"
+            variant="outlined"
+            label="Демо-данные"
+            title="В базе подняты демонстрационные документы и тестовые аккаунты"
+          />
         )}
+        {user ? (
+          <>
+            {isAdminRole(user.role) ? (
+              <Chip
+                size="small"
+                variant="outlined"
+                label={user.role === 'expert' ? 'Эксперт' : 'Админ'}
+              />
+            ) : null}
+            <Tooltip title="Личный кабинет">
+              <IconButton
+                component={RouterLink}
+                to={paths.app.profile}
+                size="small"
+                aria-label={`Профиль: ${user.name}`}
+              >
+                <Avatar
+                  sx={{
+                    width: 34,
+                    height: 34,
+                    fontSize: 14,
+                    bgcolor: 'primary.main',
+                  }}
+                >
+                  {initials(user.firstName ?? '', user.lastName ?? '')}
+                </Avatar>
+              </IconButton>
+            </Tooltip>
+            <Typography
+              variant="body2"
+              noWrap
+              sx={{ display: { xs: 'none', sm: 'block' }, maxWidth: 200 }}
+            >
+              {user.name}
+            </Typography>
+            <Tooltip title="Выйти">
+              <IconButton onClick={onLogout} aria-label="Выйти из аккаунта">
+                <LogoutIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </>
+        ) : null}
       </Toolbar>
     </AppBar>
   )

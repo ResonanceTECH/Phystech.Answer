@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -204,6 +205,14 @@ func (p *Postgres) DeleteDocument(ctx context.Context, id string) error {
 func defaultStr(s, def string) string {
 	if s == "" {
 		return def
+	}
+	return s
+}
+
+// nullStr для nullable-колонок: пустая строка → SQL NULL.
+func nullStr(s string) any {
+	if s == "" {
+		return nil
 	}
 	return s
 }
@@ -468,15 +477,21 @@ func (p *Postgres) GetSourceFile(ctx context.Context, id string) (model.SourceFi
 
 // ---------- users / auth ----------
 
+const userCols = `id, name, first_name, last_name, email, COALESCE(login, ''), role,
+	employee_category, COALESCE(department_id, ''), "position",
+	onboarding_complete, email_verified_at, created_at`
+
 func scanUser(row pgx.Row) (model.User, error) {
 	var u model.User
-	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.Login, &u.Role, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.Name, &u.FirstName, &u.LastName, &u.Email, &u.Login,
+		&u.Role, &u.EmployeeCategory, &u.DepartmentID, &u.Position,
+		&u.OnboardingComplete, &u.EmailVerifiedAt, &u.CreatedAt)
 	return u, err
 }
 
 func (p *Postgres) ListUsers(ctx context.Context) ([]model.User, error) {
 	rows, err := p.pool.Query(ctx,
-		`SELECT id, name, email, login, role, created_at FROM users ORDER BY created_at`)
+		`SELECT `+userCols+` FROM users ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -495,11 +510,16 @@ func (p *Postgres) ListUsers(ctx context.Context) ([]model.User, error) {
 func (p *Postgres) CreateUser(ctx context.Context, u model.User, passwordHash string) (model.User, error) {
 	u.ID = newID("usr")
 	u.CreatedAt = time.Now()
+	if u.Name == "" {
+		u.Name = strings.TrimSpace(u.FirstName + " " + u.LastName)
+	}
 	_, err := p.pool.Exec(ctx, `INSERT INTO users
-		(id, name, email, login, password_hash, role, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		u.ID, u.Name, u.Email, u.Login, passwordHash,
-		defaultStr(u.Role, "employee"), u.CreatedAt)
+		(id, name, first_name, last_name, email, login, password_hash, role,
+		 employee_category, department_id, "position", onboarding_complete, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		u.ID, u.Name, u.FirstName, u.LastName, u.Email, nullStr(u.Login), passwordHash,
+		defaultStr(u.Role, "employee"), u.EmployeeCategory,
+		nullStr(u.DepartmentID), u.Position, u.OnboardingComplete, u.CreatedAt)
 	if isUniqueViolation(err) {
 		return model.User{}, ErrConflict
 	}
@@ -508,7 +528,7 @@ func (p *Postgres) CreateUser(ctx context.Context, u model.User, passwordHash st
 
 func (p *Postgres) GetUser(ctx context.Context, id string) (model.User, error) {
 	u, err := scanUser(p.pool.QueryRow(ctx,
-		`SELECT id, name, email, login, role, created_at FROM users WHERE id=$1`, id))
+		`SELECT `+userCols+` FROM users WHERE id=$1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.User{}, ErrNotFound
 	}
@@ -518,35 +538,158 @@ func (p *Postgres) GetUser(ctx context.Context, id string) (model.User, error) {
 func (p *Postgres) GetUserByLogin(ctx context.Context, login string) (model.User, string, error) {
 	var u model.User
 	var hash string
-	err := p.pool.QueryRow(ctx, `SELECT id, name, email, login, role, created_at, password_hash
+	err := p.pool.QueryRow(ctx, `SELECT `+userCols+`, password_hash
 		FROM users WHERE login=$1`, login).Scan(
-		&u.ID, &u.Name, &u.Email, &u.Login, &u.Role, &u.CreatedAt, &hash)
+		&u.ID, &u.Name, &u.FirstName, &u.LastName, &u.Email, &u.Login,
+		&u.Role, &u.EmployeeCategory, &u.DepartmentID, &u.Position,
+		&u.OnboardingComplete, &u.EmailVerifiedAt, &u.CreatedAt, &hash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.User{}, "", ErrNotFound
 	}
 	return u, hash, err
 }
 
-func (p *Postgres) CreateSession(ctx context.Context, userID string, ttl time.Duration) (string, error) {
-	id := newID("ses") + newID("")
-	_, err := p.pool.Exec(ctx, `INSERT INTO sessions (id, user_id, expires_at)
-		VALUES ($1,$2,$3)`, id, userID, time.Now().Add(ttl))
-	return id, err
+func (p *Postgres) GetUserByEmail(ctx context.Context, email string) (model.User, string, error) {
+	var u model.User
+	var hash string
+	err := p.pool.QueryRow(ctx, `SELECT `+userCols+`, password_hash
+		FROM users WHERE lower(email)=lower($1)`, email).Scan(
+		&u.ID, &u.Name, &u.FirstName, &u.LastName, &u.Email, &u.Login,
+		&u.Role, &u.EmployeeCategory, &u.DepartmentID, &u.Position,
+		&u.OnboardingComplete, &u.EmailVerifiedAt, &u.CreatedAt, &hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.User{}, "", ErrNotFound
+	}
+	return u, hash, err
 }
 
-func (p *Postgres) GetSessionUser(ctx context.Context, sessionID string) (model.User, error) {
-	u, err := scanUser(p.pool.QueryRow(ctx, `SELECT u.id, u.name, u.email, u.login, u.role, u.created_at
-		FROM sessions s JOIN users u ON u.id = s.user_id
-		WHERE s.id=$1 AND s.expires_at > now()`, sessionID))
+func (p *Postgres) UpdateUserProfile(ctx context.Context, id string, patch model.ProfilePatch) (model.User, error) {
+	sets := []string{"updated_at = now()"}
+	args := []any{id}
+	add := func(col string, v any) {
+		args = append(args, v)
+		sets = append(sets, fmt.Sprintf("%s = $%d", col, len(args)))
+	}
+	if patch.FirstName != nil {
+		add("first_name", strings.TrimSpace(*patch.FirstName))
+	}
+	if patch.LastName != nil {
+		add("last_name", strings.TrimSpace(*patch.LastName))
+	}
+	if patch.EmployeeCategory != nil {
+		add("employee_category", *patch.EmployeeCategory)
+	}
+	if patch.DepartmentID != nil {
+		add("department_id", nullStr(*patch.DepartmentID))
+	}
+	if patch.Position != nil {
+		add("position", *patch.Position)
+	}
+	if patch.OnboardingComplete != nil {
+		add("onboarding_complete", *patch.OnboardingComplete)
+	}
+	u, err := scanUser(p.pool.QueryRow(ctx,
+		`UPDATE users SET `+strings.Join(sets, ", ")+` WHERE id=$1 RETURNING `+userCols,
+		args...))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.User{}, ErrNotFound
+	}
+	if err != nil {
+		return model.User{}, err
+	}
+	// name — производное поле; в одном UPDATE оно увидело бы старые значения.
+	if patch.FirstName != nil || patch.LastName != nil {
+		if _, err := p.pool.Exec(ctx,
+			`UPDATE users SET name = btrim(concat_ws(' ', first_name, last_name)) WHERE id=$1`, id); err != nil {
+			return model.User{}, err
+		}
+		u.Name = strings.TrimSpace(u.FirstName + " " + u.LastName)
+	}
+	return u, nil
+}
+
+func (p *Postgres) UpdateUserPassword(ctx context.Context, id, passwordHash string) error {
+	tag, err := p.pool.Exec(ctx,
+		`UPDATE users SET password_hash=$2, updated_at=now() WHERE id=$1`, id, passwordHash)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+
+func (p *Postgres) CreateSession(ctx context.Context, userID, tokenHash string, ttl time.Duration) error {
+	_, err := p.pool.Exec(ctx, `INSERT INTO sessions (id, user_id, token_hash, last_seen_at, expires_at)
+		VALUES ($1,$2,$3,now(),$4)`, newID("ses"), userID, tokenHash, time.Now().Add(ttl))
+	return err
+}
+
+// userColsU — userCols с алиасом u. для JOIN-запросов (id/created_at
+// иначе неоднозначны между sessions и users).
+const userColsU = `u.id, u.name, u.first_name, u.last_name, u.email,
+	COALESCE(u.login, ''), u.role, u.employee_category,
+	COALESCE(u.department_id, ''), u."position",
+	u.onboarding_complete, u.email_verified_at, u.created_at`
+
+func (p *Postgres) GetSessionUser(ctx context.Context, tokenHash string) (model.User, error) {
+	u, err := scanUser(p.pool.QueryRow(ctx, `SELECT `+userColsU+`
+		FROM sessions s JOIN users u ON u.id = s.user_id
+		WHERE s.token_hash=$1 AND s.expires_at > now() AND s.revoked_at IS NULL`, tokenHash))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.User{}, ErrNotFound
+	}
+	if err == nil {
+		_, _ = p.pool.Exec(ctx, `UPDATE sessions SET last_seen_at=now() WHERE token_hash=$1`, tokenHash)
 	}
 	return u, err
 }
 
-func (p *Postgres) DeleteSession(ctx context.Context, sessionID string) error {
-	_, err := p.pool.Exec(ctx, `DELETE FROM sessions WHERE id=$1`, sessionID)
+func (p *Postgres) DeleteSession(ctx context.Context, tokenHash string) error {
+	_, err := p.pool.Exec(ctx,
+		`UPDATE sessions SET revoked_at=now() WHERE token_hash=$1`, tokenHash)
 	return err
+}
+
+func (p *Postgres) RevokeUserSessions(ctx context.Context, userID string) error {
+	_, err := p.pool.Exec(ctx,
+		`UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, userID)
+	return err
+}
+
+func (p *Postgres) CreatePasswordResetToken(ctx context.Context, userID, tokenHash string, ttl time.Duration) error {
+	_, err := p.pool.Exec(ctx, `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
+		VALUES ($1,$2,$3,$4)`, newID("prt"), userID, tokenHash, time.Now().Add(ttl))
+	return err
+}
+
+func (p *Postgres) ConsumePasswordResetToken(ctx context.Context, tokenHash string) (model.User, error) {
+	var id, userID string
+	var usedAt *time.Time
+	var expiresAt time.Time
+	err := p.pool.QueryRow(ctx,
+		`SELECT id, user_id, used_at, expires_at FROM password_reset_tokens WHERE token_hash=$1`,
+		tokenHash).Scan(&id, &userID, &usedAt, &expiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.User{}, ErrNotFound
+	}
+	if err != nil {
+		return model.User{}, err
+	}
+	if usedAt != nil {
+		return model.User{}, ErrTokenUsed
+	}
+	if time.Now().After(expiresAt) {
+		return model.User{}, ErrTokenExpired
+	}
+	// Одноразовость гонко-устойчива: второй параллельный UPDATE ничего не найдёт.
+	tag, err := p.pool.Exec(ctx,
+		`UPDATE password_reset_tokens SET used_at=now() WHERE id=$1 AND used_at IS NULL`, id)
+	if err != nil {
+		return model.User{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return model.User{}, ErrTokenUsed
+	}
+	return p.GetUser(ctx, userID)
 }
 
 // ---------- read marks ----------
@@ -1108,6 +1251,7 @@ func (p *Postgres) SearchChunks(ctx context.Context, query string, docIDs, categ
 	)
 	SELECT c.id, c.version_id, d.id, d.title,
 		COALESCE(s.section_number,''), c.content, v.legal_status,
+		d.access_level,
 		ts_rank(to_tsvector('russian', lower(c.content)), q.tsq) AS rank
 		FROM document_chunks c
 		CROSS JOIN q
@@ -1138,7 +1282,8 @@ func (p *Postgres) SearchChunks(ctx context.Context, query string, docIDs, categ
 	for rows.Next() {
 		var h model.SearchHit
 		if err := rows.Scan(&h.ChunkID, &h.VersionID, &h.DocumentID,
-			&h.DocumentTitle, &h.SectionNumber, &h.Content, &h.LegalStatus, &h.Rank); err != nil {
+			&h.DocumentTitle, &h.SectionNumber, &h.Content, &h.LegalStatus,
+			&h.AccessLevel, &h.Rank); err != nil {
 			return nil, err
 		}
 		out = append(out, h)

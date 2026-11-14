@@ -3,19 +3,22 @@
 export const paths = {
   home: '/',
   auth: {
-    login: '/auth/login',
-    register: '/auth/register',
-    forgotPassword: '/auth/forgot-password',
+    login: '/login',
+    register: '/register',
+    forgotPassword: '/forgot-password',
+    resetPassword: '/reset-password',
+    onboarding: '/onboarding',
   },
   app: {
     root: '/app',
     home: '/app',
+    profile: '/app/profile',
     chatNew: '/app/chat/new',
     chat: (id: string) => `/app/chat/${id}`,
     documents: '/app/documents',
     document: (id: string) => `/app/documents/${id}`,
     instructions: '/app/instructions',
-    onboarding: '/app/onboarding',
+    plan: '/app/plan',
   },
   admin: {
     root: '/admin',
