@@ -123,7 +123,7 @@ function useHitNavigation(container: React.RefObject<HTMLElement | null>, deps: 
 function HitBar({ query, count, index, go }: { query: string; count: number; index: number; go: (d: number) => void }) {
   if (!query.trim()) return null
   return (
-    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'action.hover', position: 'sticky', top: 0, zIndex: 2 }}>
+    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider', bgcolor: '#f3f0fb', color: '#1f1a2e', position: 'sticky', top: 0, zIndex: 2 }}>
       <Typography variant="body2" sx={{ flex: 1 }}>
         {count > 0 ? (
           <>
