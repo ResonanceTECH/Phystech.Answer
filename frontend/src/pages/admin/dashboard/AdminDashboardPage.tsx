@@ -21,7 +21,7 @@ export function AdminDashboardPage() {
   const documents = useDocuments()
   const users = useQuery({
     queryKey: queryKeys.users.list(),
-    queryFn: () => api.get<UserSummary[]>('/users'),
+    queryFn: () => api.get<UserSummary[]>('/v1/users'),
   })
 
   const docs = documents.data ?? []

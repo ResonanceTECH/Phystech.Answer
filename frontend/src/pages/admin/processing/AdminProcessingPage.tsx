@@ -58,7 +58,7 @@ export function AdminProcessingPage() {
     setLoading(true)
     setError(null)
     try {
-      setJobs(await api.get<AdminJob[]>('/admin/processing?limit=200'))
+      setJobs(await api.get<AdminJob[]>('/v1/admin/processing?limit=200'))
     } catch {
       setError('Не удалось загрузить очередь обработки.')
     } finally {
@@ -76,7 +76,7 @@ export function AdminProcessingPage() {
   const retry = async (id: string) => {
     setRetrying(id)
     try {
-      await api.post(`/admin/processing/${id}/retry`)
+      await api.post(`/v1/admin/processing/${id}/retry`)
       await load()
     } catch {
       // Оставляем как есть — следующий poll покажет актуальный статус.

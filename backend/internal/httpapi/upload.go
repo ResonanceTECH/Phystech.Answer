@@ -386,10 +386,13 @@ func (s *Server) listAttachments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// latestPublishedVersion returns the newest published version; versions are
+// ordered by version_number ASC, so scan from the end. Falls back to the
+// newest version when nothing is published yet.
 func latestPublishedVersion(vers []model.DocumentVersion) model.DocumentVersion {
-	for _, v := range vers {
-		if v.ProcessingStatus == "published" {
-			return v
+	for i := len(vers) - 1; i >= 0; i-- {
+		if vers[i].ProcessingStatus == "published" {
+			return vers[i]
 		}
 	}
 	return vers[len(vers)-1]
@@ -451,10 +454,29 @@ func (s *Server) getDocumentFile(w http.ResponseWriter, r *http.Request) {
 	}
 	v := latestPublishedVersion(vers)
 	if v.SourceFileID == "" {
-		writeError(w, http.StatusNotFound, "no source file")
+		s.serveTextVersion(w, r, r.PathValue("id"), v)
 		return
 	}
 	s.serveSourceFile(w, r, v.SourceFileID)
+}
+
+// serveTextVersion streams a version that has no uploaded source file
+// (seeded/imported content) as a plain-text "original", so document viewers
+// and downloads keep working for the whole corpus.
+func (s *Server) serveTextVersion(w http.ResponseWriter, r *http.Request, docID string, v model.DocumentVersion) {
+	name := "document.txt"
+	if doc, err := s.store.GetDocument(r.Context(), docID); err == nil {
+		name = strings.Map(func(r rune) rune {
+			if r == '/' || r == '\\' || r < 32 {
+				return -1
+			}
+			return r
+		}, doc.Title) + ".txt"
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename*=UTF-8''%s", url.PathEscape(name)))
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	io.WriteString(w, v.Content)
 }
 
 func (s *Server) getSourceFile(w http.ResponseWriter, r *http.Request) {
