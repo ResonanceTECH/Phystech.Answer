@@ -33,16 +33,40 @@ func (c *Client) Enabled() bool { return c != nil && c.baseURL != "" }
 // Source mirrors the citation format returned by the ML service.
 type Source struct {
 	DocumentID string  `json:"documentId"`
+	ChunkID    string  `json:"chunkId,omitempty"`
 	Title      string  `json:"title"`
 	Section    string  `json:"section,omitempty"`
+	Page       int     `json:"page,omitempty"`
 	Excerpt    string  `json:"excerpt"`
 	Score      float64 `json:"score"`
 }
 
+// Step mirrors the structured step returned by the ML answer payload.
+type Step struct {
+	Order       int      `json:"order"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Responsible *string  `json:"responsible"`
+	Deadline    *string  `json:"deadline"`
+	Condition   *string  `json:"condition"`
+	CitationIDs []string `json:"citation_ids"`
+}
+
+// Conflict mirrors a detected contradiction between sources.
+type Conflict struct {
+	Description string   `json:"description"`
+	ChunkIDs    []string `json:"chunk_ids"`
+}
+
 // AskResult is the ML answer plus the degraded-mode flag.
 type AskResult struct {
-	Answer  string
-	Sources []Source
+	Answer             string
+	Sources            []Source
+	Status             string
+	Steps              []Step
+	Warnings           []string
+	MissingInformation []string
+	Conflicts          []Conflict
 	// Stub is true when ML was unreachable and this is a fallback reply.
 	Stub bool
 }
@@ -79,8 +103,13 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 // Ask runs the RAG pipeline in the ML service.
 func (c *Client) Ask(ctx context.Context, question string) (AskResult, error) {
 	var ml struct {
-		Answer  string   `json:"answer"`
-		Sources []Source `json:"sources"`
+		Answer             string     `json:"answer"`
+		Sources            []Source   `json:"sources"`
+		Status             string     `json:"status"`
+		Steps              []Step     `json:"steps"`
+		Warnings           []string   `json:"warnings"`
+		MissingInformation []string   `json:"missing_information"`
+		Conflicts          []Conflict `json:"conflicts"`
 	}
 	code, err := c.do(ctx, http.MethodPost, "/api/ask",
 		map[string]string{"question": question}, &ml)
@@ -93,7 +122,11 @@ func (c *Client) Ask(ctx context.Context, question string) (AskResult, error) {
 	if ml.Sources == nil {
 		ml.Sources = []Source{}
 	}
-	return AskResult{Answer: ml.Answer, Sources: ml.Sources}, nil
+	return AskResult{
+		Answer: ml.Answer, Sources: ml.Sources, Status: ml.Status,
+		Steps: ml.Steps, Warnings: ml.Warnings,
+		MissingInformation: ml.MissingInformation, Conflicts: ml.Conflicts,
+	}, nil
 }
 
 // IndexDocument upserts a document into the ML search index.
@@ -103,6 +136,8 @@ func (c *Client) IndexDocument(ctx context.Context, doc model.Document) error {
 	}
 	code, err := c.do(ctx, http.MethodPut, "/api/documents/"+doc.ID, map[string]any{
 		"id": doc.ID, "title": doc.Title, "content": doc.Content, "tags": doc.Tags,
+		"documentNumber": doc.DocumentNumber, "documentType": doc.DocumentType,
+		"category": doc.Category, "legalStatus": doc.LegalStatus,
 	}, nil)
 	if err != nil {
 		return err
@@ -128,14 +163,22 @@ func (c *Client) SyncDocuments(ctx context.Context, docs []model.Document) error
 		return nil
 	}
 	type mlDoc struct {
-		ID      string   `json:"id"`
-		Title   string   `json:"title"`
-		Content string   `json:"content"`
-		Tags    []string `json:"tags"`
+		ID             string   `json:"id"`
+		Title          string   `json:"title"`
+		Content        string   `json:"content"`
+		Tags           []string `json:"tags"`
+		DocumentNumber string   `json:"documentNumber,omitempty"`
+		DocumentType   string   `json:"documentType,omitempty"`
+		Category       string   `json:"category,omitempty"`
+		LegalStatus    string   `json:"legalStatus,omitempty"`
 	}
 	out := make([]mlDoc, 0, len(docs))
 	for _, d := range docs {
-		out = append(out, mlDoc{ID: d.ID, Title: d.Title, Content: d.Content, Tags: d.Tags})
+		out = append(out, mlDoc{
+			ID: d.ID, Title: d.Title, Content: d.Content, Tags: d.Tags,
+			DocumentNumber: d.DocumentNumber, DocumentType: d.DocumentType,
+			Category: d.Category, LegalStatus: d.LegalStatus,
+		})
 	}
 	code, err := c.do(ctx, http.MethodPost, "/api/sync",
 		map[string]any{"documents": out}, nil)

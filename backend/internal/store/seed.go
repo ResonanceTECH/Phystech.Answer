@@ -5,8 +5,7 @@ import (
 	"errors"
 	"log"
 
-	"golang.org/x/crypto/bcrypt"
-
+	"phystech-answer/backend/internal/authx"
 	"phystech-answer/backend/internal/model"
 )
 
@@ -26,22 +25,24 @@ func SeedDemo(ctx context.Context, st Store) {
 	}
 
 	hash := func(pw string) string {
-		h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+		h, err := authx.HashPassword(pw)
 		if err != nil {
-			log.Printf("seed: bcrypt: %v", err)
+			log.Printf("seed: hash: %v", err)
 			return ""
 		}
-		return string(h)
+		return h
 	}
+	// Демо-аккаунты: профиль уже настроен, онбординг пропускается.
+	demo := model.User{OnboardingComplete: true}
 
-	ivan, err := seedUser(ctx, st, model.User{Name: "Иван Петров", Email: "ivan.petrov@example.com", Login: "ivan", Role: "employee"}, hash("ivan123"))
+	ivan, err := seedUser(ctx, st, model.User{Name: "Иван Петров", FirstName: "Иван", LastName: "Петров", Email: "ivan.petrov@example.com", Login: "ivan", Role: "employee", EmployeeCategory: "employee", OnboardingComplete: demo.OnboardingComplete}, hash("ivan123"))
 	if err != nil {
 		log.Printf("seed: %v", err)
 		return
 	}
-	seedUser(ctx, st, model.User{Name: "Мария Сидорова", Email: "maria.sidorova@example.com", Login: "maria", Role: "employee"}, hash("maria123"))
-	seedUser(ctx, st, model.User{Name: "Администратор", Email: "admin@example.com", Login: "admin", Role: "admin"}, hash("admin123"))
-	seedUser(ctx, st, model.User{Name: "Эксперт Нормативки", Email: "expert@example.com", Login: "expert", Role: "expert"}, hash("expert123"))
+	seedUser(ctx, st, model.User{Name: "Мария Сидорова", FirstName: "Мария", LastName: "Сидорова", Email: "maria.sidorova@example.com", Login: "maria", Role: "employee", EmployeeCategory: "employee", OnboardingComplete: true}, hash("maria123"))
+	seedUser(ctx, st, model.User{Name: "Администратор", FirstName: "Администратор", LastName: "Базы знаний", Email: "admin@example.com", Login: "admin", Role: "admin", OnboardingComplete: true}, hash("admin123"))
+	seedUser(ctx, st, model.User{Name: "Эксперт Нормативки", FirstName: "Эксперт", LastName: "Нормативки", Email: "expert@example.com", Login: "expert", Role: "expert", OnboardingComplete: true}, hash("expert123"))
 
 	docs := []model.Document{
 		{

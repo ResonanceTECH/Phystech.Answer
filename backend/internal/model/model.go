@@ -22,16 +22,39 @@ type Document struct {
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
 	// SourceFileID links the initial version to an uploaded file (input-only).
-	SourceFileID   string    `json:"-"`
+	SourceFileID string `json:"-"`
 }
 
 type User struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	Login     string    `json:"login,omitempty"`
-	Role      string    `json:"role,omitempty"` // employee|admin|expert
-	CreatedAt time.Time `json:"createdAt"`
+	ID                 string     `json:"id"`
+	Name               string     `json:"name"`
+	FirstName          string     `json:"firstName,omitempty"`
+	LastName           string     `json:"lastName,omitempty"`
+	Email              string     `json:"email"`
+	Login              string     `json:"login,omitempty"`
+	Role               string     `json:"role,omitempty"` // employee|admin|expert
+	EmployeeCategory   string     `json:"employeeCategory,omitempty"`
+	DepartmentID       string     `json:"departmentId,omitempty"`
+	Position           string     `json:"position,omitempty"`
+	OnboardingComplete bool       `json:"onboardingComplete"`
+	EmailVerifiedAt    *time.Time `json:"emailVerifiedAt,omitempty"`
+	CreatedAt          time.Time  `json:"createdAt"`
+}
+
+// ProfilePatch — поля, которые пользователь может менять сам (onboarding/profile).
+// Системные права (role) сюда не входят и клиентом не назначаются.
+type ProfilePatch struct {
+	FirstName          *string `json:"firstName"`
+	LastName           *string `json:"lastName"`
+	EmployeeCategory   *string `json:"employeeCategory"`
+	DepartmentID       *string `json:"departmentId"`
+	Position           *string `json:"position"`
+	OnboardingComplete *bool   `json:"onboardingComplete"`
+}
+
+type Department struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type SourceFile struct {
@@ -133,13 +156,13 @@ type RunEvent struct {
 }
 
 type Answer struct {
-	ID                 string   `json:"id"`
-	RunID              string   `json:"runId"`
-	ConversationID     string   `json:"conversationId,omitempty"`
-	Status             string   `json:"status"` // answered|partial|clarification_required|not_found|conflict|error
-	Summary            string   `json:"summary"`
-	Warnings           []string `json:"warnings"`
-	MissingInformation []string `json:"missing_information"`
+	ID                 string    `json:"id"`
+	RunID              string    `json:"runId"`
+	ConversationID     string    `json:"conversationId,omitempty"`
+	Status             string    `json:"status"` // answered|partial|clarification_required|not_found|conflict|error
+	Summary            string    `json:"summary"`
+	Warnings           []string  `json:"warnings"`
+	MissingInformation []string  `json:"missing_information"`
 	CreatedAt          time.Time `json:"createdAt"`
 }
 
@@ -170,7 +193,7 @@ type Citation struct {
 	Score             float64 `json:"score"`
 	// StepOrder is an input-only field: on CreateAnswer it binds the
 	// citation to the step with this Order (0 = unbound).
-	StepOrder         int     `json:"-"`
+	StepOrder int `json:"-"`
 }
 
 // SearchHit is one chunk-level result of hybrid/fulltext search.
@@ -182,6 +205,7 @@ type SearchHit struct {
 	SectionNumber string  `json:"sectionNumber,omitempty"`
 	Content       string  `json:"content"`
 	LegalStatus   string  `json:"legalStatus,omitempty"`
+	AccessLevel   string  `json:"accessLevel,omitempty"`
 	Rank          float64 `json:"rank"`
 }
 
@@ -206,13 +230,13 @@ type ActionRoute struct {
 }
 
 type ActionRouteStep struct {
-	ID        string     `json:"id"`
-	RouteID   string     `json:"routeId"`
-	StepID    string     `json:"stepId,omitempty"`
-	Order     int        `json:"order"`
-	Title     string     `json:"title"`
-	Done      bool       `json:"done"`
-	DoneAt    *time.Time `json:"doneAt,omitempty"`
+	ID      string     `json:"id"`
+	RouteID string     `json:"routeId"`
+	StepID  string     `json:"stepId,omitempty"`
+	Order   int        `json:"order"`
+	Title   string     `json:"title"`
+	Done    bool       `json:"done"`
+	DoneAt  *time.Time `json:"doneAt,omitempty"`
 }
 
 type Job struct {

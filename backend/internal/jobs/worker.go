@@ -319,16 +319,32 @@ func (r *Runner) askML(ctx context.Context, question string) (mlclient.AskResult
 	return res, nil
 }
 
-// buildAnswer maps the ML response into the persistent answer model:
-// numbered lines become steps, [n] markers bind citations to steps.
+// answerStatuses is the closed set of statuses persisted on answers.
+var answerStatuses = map[string]bool{
+	"answered": true, "partial": true, "clarification_required": true,
+	"not_found": true, "conflict": true, "error": true,
+}
+
+// buildAnswer maps the ML response into the persistent answer model.
+// When the ML returns a structured payload (status/steps/conflicts) it is
+// used directly; otherwise numbered lines of the text become steps and
+// [n] markers bind citations to steps.
 func (r *Runner) buildAnswer(ctx context.Context, p AnswerGeneratePayload, res mlclient.AskResult) (model.Answer, []model.AnswerStep, []model.Citation, string) {
-	status := "answered"
-	if len(res.Sources) == 0 {
-		status = "not_found"
+	status := res.Status
+	if !answerStatuses[status] {
+		status = "answered"
+		if len(res.Sources) == 0 {
+			status = "not_found"
+		}
 	}
-	warnings := []string{}
+	warnings := append([]string{}, res.Warnings...)
 	if res.Stub {
 		warnings = append(warnings, "Ответ сформирован в деградированном режиме без ML-сервиса.")
+	}
+	for _, c := range res.Conflicts {
+		if strings.TrimSpace(c.Description) != "" {
+			warnings = append(warnings, "Конфликт норм: "+c.Description)
+		}
 	}
 
 	// Citations from sources; resolve version + chunk ids.
@@ -341,30 +357,60 @@ func (r *Runner) buildAnswer(ctx context.Context, p AnswerGeneratePayload, res m
 			Quote:         src.Excerpt,
 			Score:         src.Score,
 		}
+		if src.Page > 0 {
+			pg := src.Page
+			cit.PageNumber = &pg
+		}
 		r.resolveCitationRefs(ctx, &cit)
 		citations = append(citations, cit)
 	}
 
-	// Parse numbered lines of the answer text into steps.
 	var steps []model.AnswerStep
-	order := 0
-	for _, line := range strings.Split(res.Answer, "\n") {
-		m := stepLineRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
+	if len(res.Steps) > 0 {
+		// Structured path: steps and per-step citation links come from ML.
+		chunkToIdx := map[string]int{}
+		for i, src := range res.Sources {
+			if src.ChunkID != "" {
+				chunkToIdx[src.ChunkID] = i
+			}
 		}
-		order++
-		desc := strings.TrimSpace(m[2])
-		steps = append(steps, model.AnswerStep{
-			Order:       order,
-			Title:       truncateRunes(desc, 80),
-			Description: desc,
-			Required:    true,
-		})
-		// Bind [n] markers found in this step's text to citation n.
-		for _, cm := range citeMarkRe.FindAllStringSubmatch(m[2], -1) {
-			if n, err := strconv.Atoi(cm[1]); err == nil && n >= 1 && n <= len(citations) {
-				citations[n-1].StepOrder = order
+		for i, s := range res.Steps {
+			order := s.Order
+			if order <= 0 {
+				order = i + 1
+			}
+			steps = append(steps, model.AnswerStep{
+				Order: order, Title: s.Title, Description: s.Description,
+				Responsible: s.Responsible, Deadline: s.Deadline,
+				Condition: s.Condition, Required: true,
+			})
+			for _, cid := range s.CitationIDs {
+				if idx, ok := chunkToIdx[cid]; ok {
+					citations[idx].StepOrder = order
+				}
+			}
+		}
+	} else {
+		// Legacy path: parse numbered lines of the answer text into steps.
+		order := 0
+		for _, line := range strings.Split(res.Answer, "\n") {
+			m := stepLineRe.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			order++
+			desc := strings.TrimSpace(m[2])
+			steps = append(steps, model.AnswerStep{
+				Order:       order,
+				Title:       truncateRunes(desc, 80),
+				Description: desc,
+				Required:    true,
+			})
+			// Bind [n] markers found in this step's text to citation n.
+			for _, cm := range citeMarkRe.FindAllStringSubmatch(m[2], -1) {
+				if n, err := strconv.Atoi(cm[1]); err == nil && n >= 1 && n <= len(citations) {
+					citations[n-1].StepOrder = order
+				}
 			}
 		}
 	}
@@ -372,8 +418,8 @@ func (r *Runner) buildAnswer(ctx context.Context, p AnswerGeneratePayload, res m
 		steps = nil
 	}
 
-	missing := []string{}
-	if status == "not_found" {
+	missing := append([]string{}, res.MissingInformation...)
+	if status == "not_found" && len(missing) == 0 {
 		missing = append(missing, "В базе знаний не найдено подтверждающих фрагментов.")
 	}
 
