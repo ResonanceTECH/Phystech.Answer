@@ -45,6 +45,7 @@ type question struct {
 type hit struct {
 	Title   string  `json:"title"`
 	Number  string  `json:"number"`
+	DocNum  string  `json:"documentNumber"` // alternative pipeline schema
 	Section string  `json:"section"`
 	Score   float64 `json:"score"`
 }
@@ -210,6 +211,9 @@ type askResp struct {
 	Steps   []struct {
 		Text string `json:"text"`
 		Refs []int  `json:"refs"`
+		// alternative pipeline schema
+		Description string   `json:"description"`
+		CitationIDs []string `json:"citation_ids"`
 	} `json:"steps"`
 	Conflicts []any  `json:"conflicts"`
 	Sources   []hit  `json:"sources"`
@@ -229,10 +233,14 @@ func runE2E(url string, qs []question, configs []string, w *strings.Builder) {
 	var rows []string
 	for _, q := range qs {
 		var r askResp
+		askStart := time.Now()
 		if err := post(url+"/api/ask", map[string]any{"question": q.Question, "options": o}, &r); err != nil {
 			log.Printf("%s: %v", q.ID, err)
 			rows = append(rows, fmt.Sprintf("| `%s` | ошибка | %v |", q.ID, err))
 			continue
+		}
+		if r.Trace.LatencyMs == 0 {
+			r.Trace.LatencyMs = time.Since(askStart).Milliseconds()
 		}
 		lat = append(lat, r.Trace.LatencyMs)
 		dropped += r.Trace.DroppedRefs
@@ -271,11 +279,15 @@ func runE2E(url string, qs []question, configs []string, w *strings.Builder) {
 		}
 		for _, s := range r.Steps {
 			stepsTotal++
-			if len(s.Refs) > 0 {
+			if len(s.Refs) > 0 || len(s.CitationIDs) > 0 {
 				stepsCited++
 			}
 		}
-		summary := strings.ReplaceAll(r.Summary, "|", "/")
+		summary := r.Summary
+		if summary == "" {
+			summary = r.Answer
+		}
+		summary = strings.ReplaceAll(strings.ReplaceAll(summary, "|", "/"), "\n", " ")
 		if rr := []rune(summary); len(rr) > 140 {
 			summary = string(rr[:140]) + "…"
 		}
@@ -301,7 +313,8 @@ func runE2E(url string, qs []question, configs []string, w *strings.Builder) {
 
 func docMatch(expect string, h hit) bool {
 	e := strings.ToLower(expect)
-	return strings.EqualFold(h.Number, expect) || strings.Contains(strings.ToLower(h.Title), e)
+	return strings.EqualFold(h.Number, expect) || strings.EqualFold(h.DocNum, expect) ||
+		strings.Contains(strings.ToLower(h.Title), e)
 }
 
 func allDocs(expect []string, hits []hit, all bool) bool {
