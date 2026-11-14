@@ -64,7 +64,7 @@ export function ChatLayout() {
   }, [setConversations])
 
   return (
-    <Box sx={{ display: 'flex', height: '100svh', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', height: '100%', minHeight: 0, overflow: 'hidden' }}>
       {/* Левая панель: история диалогов (desktop) */}
       {isDesktop && <ConversationList activeId={conversationId} />}
 
