@@ -112,6 +112,9 @@ func (p *Postgres) CreateDocument(ctx context.Context, doc model.Document) (mode
 	now := time.Now()
 	doc.ID = newID("doc")
 	doc.CreatedAt, doc.UpdatedAt = now, now
+	if doc.Tags == nil {
+		doc.Tags = []string{}
+	}
 	_, err = tx.Exec(ctx, `INSERT INTO documents
 		(id, title, document_number, document_type, category, access_level, tags, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
