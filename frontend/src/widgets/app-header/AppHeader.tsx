@@ -2,7 +2,6 @@ import MenuIcon from '@mui/icons-material/Menu'
 import { AppBar, Chip, IconButton, Toolbar, Typography } from '@mui/material'
 import { useAppUiStore } from '@/shared/lib'
 import { config } from '@/shared/config/env'
-import { DRAWER_WIDTH } from '@/widgets/app-sidebar/AppSidebar'
 
 interface AppHeaderProps {
   title?: string
@@ -13,11 +12,9 @@ export function AppHeader({ title }: AppHeaderProps) {
 
   return (
     <AppBar
-      position="fixed"
+      position="sticky"
       elevation={0}
       sx={{
-        ml: { md: `${DRAWER_WIDTH}px` },
-        width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
         bgcolor: 'background.paper',
         color: 'text.primary',
         borderBottom: '1px solid',

@@ -24,13 +24,10 @@ export function SourcesPanel() {
   return (
     <Box
       sx={{
-        width: { xs: '100%', md: 420 },
-        flexShrink: 0,
-        borderLeft: { md: '1px solid' },
-        borderColor: 'divider',
+        width: '100%',
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        height: '100%',
         bgcolor: 'background.paper',
       }}
     >
