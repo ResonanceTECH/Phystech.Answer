@@ -54,7 +54,16 @@ export function AppHeader({ title }: AppHeaderProps) {
         >
           <MenuIcon />
         </IconButton>
-        <Typography variant="h6" noWrap sx={{ flexGrow: 1, fontWeight: 600 }}>
+        <Typography
+          variant="h6"
+          noWrap
+          sx={{
+            flexGrow: 1,
+            fontFamily: "'Unbounded', sans-serif",
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+          }}
+        >
           {title ?? config.appName}
         </Typography>
         {config.demoMode && (

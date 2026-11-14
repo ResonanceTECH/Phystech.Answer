@@ -33,12 +33,21 @@ const userItems = [
 export function AppSidebar({ mobileOpen, onMobileClose }: AppSidebarProps) {
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Toolbar sx={{ px: 2 }}>
+      <Toolbar sx={{ px: 2.5 }}>
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
-            {config.appName}
+          <Typography
+            variant="h6"
+            sx={{
+              fontFamily: "'Unbounded', sans-serif",
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+              fontSize: '1.05rem',
+              color: 'text.primary',
+            }}
+          >
+            Физтех<Box component="em" sx={{ fontStyle: 'normal', color: 'primary.light' }}>.Ответ</Box>
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{ color: 'text.disabled' }}>
             навигатор по регламентам МФТИ
           </Typography>
         </Box>
