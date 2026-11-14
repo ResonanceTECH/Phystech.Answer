@@ -1,0 +1,402 @@
+// Package jobs implements the background worker loop from spec §19: jobs
+// live in Postgres, are claimed with FOR UPDATE SKIP LOCKED, retried with
+// backoff and recovered after a worker crash.
+package jobs
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"phystech-answer/backend/internal/mlclient"
+	"phystech-answer/backend/internal/model"
+	"phystech-answer/backend/internal/parse"
+	"phystech-answer/backend/internal/storage"
+	"phystech-answer/backend/internal/store"
+)
+
+const (
+	JobDocumentParse  = "document.parse"
+	JobAnswerGenerate = "answer.generate"
+)
+
+// DocumentParsePayload is enqueued after a file upload.
+type DocumentParsePayload struct {
+	FileID     string `json:"file_id"`
+	DocumentID string `json:"document_id"`
+	VersionID  string `json:"version_id"`
+	Filename   string `json:"filename"`
+}
+
+// AnswerGeneratePayload is enqueued when a conversation message needs an answer.
+type AnswerGeneratePayload struct {
+	RunID          string `json:"run_id"`
+	ConversationID string `json:"conversation_id"`
+	MessageID      string `json:"message_id"`
+	Question       string `json:"question"`
+}
+
+type Runner struct {
+	st          store.Store
+	fs          storage.Storage
+	ml          *mlclient.Client
+	interval    time.Duration
+	concurrency int
+	staleAfter  time.Duration
+	retryDelay  time.Duration
+}
+
+func NewRunner(st store.Store, fs storage.Storage, ml *mlclient.Client, concurrency int) *Runner {
+	if concurrency <= 0 {
+		concurrency = 2
+	}
+	return &Runner{
+		st: st, fs: fs, ml: ml,
+		interval:    500 * time.Millisecond,
+		concurrency: concurrency,
+		staleAfter:  10 * time.Minute,
+		retryDelay:  30 * time.Second,
+	}
+}
+
+// Run polls for jobs until ctx is done. Intended as a goroutine.
+func (r *Runner) Run(ctx context.Context) {
+	if n, err := r.st.RequeueStaleJobs(ctx, r.staleAfter); err == nil && n > 0 {
+		log.Printf("jobs: requeued %d stale jobs", n)
+	}
+	sem := make(chan struct{}, r.concurrency)
+	var wg sync.WaitGroup
+	tick := time.NewTicker(r.interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			wg.Wait()
+			return
+		case <-tick.C:
+		}
+		batch, err := r.st.ClaimJobs(ctx, r.concurrency)
+		if err != nil {
+			if ctx.Err() == nil {
+				log.Printf("jobs: claim: %v", err)
+			}
+			continue
+		}
+		for _, j := range batch {
+			j := j
+			sem <- struct{}{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }()
+				r.handle(ctx, j)
+			}()
+		}
+	}
+}
+
+func (r *Runner) handle(ctx context.Context, j model.Job) {
+	var err error
+	switch j.JobType {
+	case JobDocumentParse:
+		err = r.handleDocumentParse(ctx, j)
+	case JobAnswerGenerate:
+		err = r.handleAnswerGenerate(ctx, j)
+	default:
+		log.Printf("jobs: unknown type %q", j.JobType)
+		err = errors.New("unknown job type")
+	}
+	if err != nil {
+		log.Printf("jobs: %s %s failed (attempt %d): %v", j.JobType, j.ID, j.Attempts, err)
+		if ferr := r.st.FailJob(ctx, j.ID, errCode(err), r.retryDelay); ferr != nil {
+			log.Printf("jobs: fail %s: %v", j.ID, ferr)
+		}
+		return
+	}
+	if err := r.st.CompleteJob(ctx, j.ID); err != nil {
+		log.Printf("jobs: complete %s: %v", j.ID, err)
+	}
+}
+
+func errCode(err error) string {
+	code := strings.ToUpper(regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(err.Error(), "_"))
+	if len(code) > 60 {
+		code = code[:60]
+	}
+	return strings.Trim(code, "_")
+}
+
+// ---------- document.parse ----------
+
+func (r *Runner) handleDocumentParse(ctx context.Context, j model.Job) error {
+	var p DocumentParsePayload
+	if err := json.Unmarshal(j.Payload, &p); err != nil {
+		return err
+	}
+
+	rc, err := r.fs.Open(ctx, fileStorageKey(p.FileID, p.Filename))
+	if err != nil {
+		return err
+	}
+	data, err := io.ReadAll(io.LimitReader(rc, 64<<20))
+	rc.Close()
+	if err != nil {
+		return err
+	}
+
+	ftype := parse.DetectByName(p.Filename)
+	if !parse.Supported(ftype) {
+		return r.st.SetVersionStatus(ctx, p.VersionID, "requires_review",
+			"unsupported file type: "+p.Filename)
+	}
+
+	text, err := parse.Extract(ftype, data)
+	switch {
+	case errors.Is(err, parse.ErrNoText):
+		return r.st.SetVersionStatus(ctx, p.VersionID, "requires_review",
+			"no text extracted — file may need OCR")
+	case err != nil:
+		return err
+	}
+
+	if err := r.st.SetVersionContent(ctx, p.VersionID, text); err != nil {
+		return err
+	}
+	if err := r.st.SetVersionStatus(ctx, p.VersionID, "published", ""); err != nil {
+		return err
+	}
+
+	// Push the processed document to the ML index.
+	if r.ml != nil {
+		doc, derr := r.st.GetDocument(ctx, p.DocumentID)
+		if derr == nil {
+			if ierr := r.ml.IndexDocument(ctx, doc); ierr != nil {
+				log.Printf("jobs: index %s in ML: %v", doc.ID, ierr)
+			}
+		}
+	}
+	return nil
+}
+
+// FileStorageKey builds the storage key used both at upload and parse time.
+func FileStorageKey(fileID, filename string) string {
+	return fileStorageKey(fileID, filename)
+}
+
+func fileStorageKey(fileID, filename string) string {
+	name := filepath_Base(filename)
+	return "files/" + fileID + "/" + name
+}
+
+func filepath_Base(p string) string {
+	p = strings.ReplaceAll(p, "\\", "/")
+	if i := strings.LastIndexByte(p, '/'); i >= 0 {
+		p = p[i+1:]
+	}
+	if p == "" || p == "." || p == ".." {
+		return "upload.bin"
+	}
+	return p
+}
+
+// ---------- answer.generate ----------
+
+var stepLineRe = regexp.MustCompile(`^\s*(\d+)[.)]\s+(.+)$`)
+var citeMarkRe = regexp.MustCompile(`\[(\d+)\]`)
+
+func (r *Runner) handleAnswerGenerate(ctx context.Context, j model.Job) error {
+	var p AnswerGeneratePayload
+	if err := json.Unmarshal(j.Payload, &p); err != nil {
+		return err
+	}
+
+	if cancelled, err := r.isCancelled(ctx, p.RunID); err != nil {
+		return err
+	} else if cancelled {
+		return nil
+	}
+	if err := r.st.SetRunStatus(ctx, p.RunID, "running", ""); err != nil {
+		return err
+	}
+	r.emit(ctx, p.RunID, "run.started", map[string]any{"run_id": p.RunID})
+	r.emit(ctx, p.RunID, "retrieval.started", map[string]any{"run_id": p.RunID})
+
+	res, err := r.askML(ctx, p.Question)
+	if err != nil {
+		r.emit(ctx, p.RunID, "answer.failed", map[string]any{"error": err.Error()})
+		r.st.SetRunStatus(ctx, p.RunID, "failed", "ML_UNAVAILABLE")
+		return err
+	}
+	r.emit(ctx, p.RunID, "retrieval.completed", map[string]any{"documents_found": len(res.Sources)})
+
+	if cancelled, err := r.isCancelled(ctx, p.RunID); err != nil {
+		return err
+	} else if cancelled {
+		return nil
+	}
+	r.emit(ctx, p.RunID, "verification.started", map[string]any{"run_id": p.RunID})
+
+	answer, steps, citations, msg := r.buildAnswer(ctx, p, res)
+	if _, err := r.st.CreateAnswer(ctx, answer, steps, citations); err != nil {
+		return err
+	}
+	if _, err := r.st.CreateMessage(ctx, model.Message{
+		ConversationID: p.ConversationID, Role: "assistant", Content: msg,
+	}); err != nil {
+		return err
+	}
+
+	r.emit(ctx, p.RunID, "answer.completed", map[string]any{"answer_id": answer.ID})
+	return r.st.SetRunStatus(ctx, p.RunID, "completed", "")
+}
+
+func (r *Runner) isCancelled(ctx context.Context, runID string) (bool, error) {
+	run, err := r.st.GetRun(ctx, runID)
+	if err != nil {
+		return false, err
+	}
+	return run.Status == "cancelled", nil
+}
+
+func (r *Runner) emit(ctx context.Context, runID, typ string, payload any) {
+	if err := r.st.AddRunEvent(ctx, runID, typ, payload); err != nil {
+		log.Printf("jobs: emit %s for %s: %v", typ, runID, err)
+	}
+}
+
+func (r *Runner) askML(ctx context.Context, question string) (mlclient.AskResult, error) {
+	if r.ml == nil || !r.ml.Enabled() {
+		return mlclient.AskResult{
+			Answer: "ML-сервис пока недоступен, это ответ-заглушка.",
+			Stub:   true,
+		}, nil
+	}
+	res, err := r.ml.Ask(ctx, question)
+	if err != nil {
+		return mlclient.AskResult{
+			Answer:  "ML-сервис пока недоступен, это ответ-заглушка.",
+			Sources: []mlclient.Source{},
+			Stub:    true,
+		}, nil
+	}
+	return res, nil
+}
+
+// buildAnswer maps the ML response into the persistent answer model:
+// numbered lines become steps, [n] markers bind citations to steps.
+func (r *Runner) buildAnswer(ctx context.Context, p AnswerGeneratePayload, res mlclient.AskResult) (model.Answer, []model.AnswerStep, []model.Citation, string) {
+	status := "answered"
+	if len(res.Sources) == 0 {
+		status = "not_found"
+	}
+	warnings := []string{}
+	if res.Stub {
+		warnings = append(warnings, "Ответ сформирован в деградированном режиме без ML-сервиса.")
+	}
+
+	// Citations from sources; resolve version + chunk ids.
+	citations := make([]model.Citation, 0, len(res.Sources))
+	for _, src := range res.Sources {
+		cit := model.Citation{
+			DocumentID:    src.DocumentID,
+			DocumentTitle: src.Title,
+			SectionNumber: src.Section,
+			Quote:         src.Excerpt,
+			Score:         src.Score,
+		}
+		r.resolveCitationRefs(ctx, &cit)
+		citations = append(citations, cit)
+	}
+
+	// Parse numbered lines of the answer text into steps.
+	var steps []model.AnswerStep
+	order := 0
+	for _, line := range strings.Split(res.Answer, "\n") {
+		m := stepLineRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		order++
+		desc := strings.TrimSpace(m[2])
+		steps = append(steps, model.AnswerStep{
+			Order:       order,
+			Title:       truncateRunes(desc, 80),
+			Description: desc,
+			Required:    true,
+		})
+		// Bind [n] markers found in this step's text to citation n.
+		for _, cm := range citeMarkRe.FindAllStringSubmatch(m[2], -1) {
+			if n, err := strconv.Atoi(cm[1]); err == nil && n >= 1 && n <= len(citations) {
+				citations[n-1].StepOrder = order
+			}
+		}
+	}
+	if len(steps) == 0 {
+		steps = nil
+	}
+
+	missing := []string{}
+	if status == "not_found" {
+		missing = append(missing, "В базе знаний не найдено подтверждающих фрагментов.")
+	}
+
+	answer := model.Answer{
+		RunID:              p.RunID,
+		Status:             status,
+		Summary:            res.Answer,
+		Warnings:           warnings,
+		MissingInformation: missing,
+	}
+	return answer, steps, citations, res.Answer
+}
+
+// resolveCitationRefs links a citation to the document version and chunk
+// that produced the source fragment (best effort — misses stay NULL).
+func (r *Runner) resolveCitationRefs(ctx context.Context, cit *model.Citation) {
+	if cit.DocumentID == "" {
+		return
+	}
+	vers, err := r.st.ListVersions(ctx, cit.DocumentID)
+	if err != nil || len(vers) == 0 {
+		return
+	}
+	var versionID string
+	for _, v := range vers {
+		if v.ProcessingStatus == "published" {
+			versionID = v.ID
+		}
+	}
+	if versionID == "" {
+		versionID = vers[len(vers)-1].ID
+	}
+	cit.DocumentVersionID = versionID
+
+	if cit.SectionNumber == "" {
+		return
+	}
+	chunks, err := r.st.ListChunks(ctx, versionID)
+	if err != nil {
+		return
+	}
+	for _, c := range chunks {
+		if c.SectionNumber == cit.SectionNumber {
+			cit.ChunkID = c.ID
+			return
+		}
+	}
+}
+
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
+}
