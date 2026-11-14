@@ -78,6 +78,7 @@ type Store interface {
 	ListRunEvents(ctx context.Context, runID string, afterID int64) ([]model.RunEvent, error)
 	CreateAnswer(ctx context.Context, a model.Answer, steps []model.AnswerStep, citations []model.Citation) (model.Answer, error)
 	GetAnswerByRun(ctx context.Context, runID string) (model.Answer, []model.AnswerStep, []model.Citation, error)
+	GetAnswer(ctx context.Context, id string) (model.Answer, error)
 	ListAnswerSteps(ctx context.Context, answerID string) ([]model.AnswerStep, error)
 
 	// Jobs.

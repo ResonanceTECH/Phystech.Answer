@@ -16,14 +16,37 @@ type createConversationRequest struct {
 	Message string `json:"message"`
 }
 
+// requireConversationAccess loads the conversation and verifies the caller
+// owns it (admins/experts may inspect any). Returns 404 for missing or
+// foreign conversations to avoid leaking existence.
+func (s *Server) requireConversationAccess(w http.ResponseWriter, r *http.Request, u model.User, convID string) (model.Conversation, bool) {
+	conv, err := s.store.GetConversation(r.Context(), convID)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "conversation not found")
+		return conv, false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get conversation")
+		return conv, false
+	}
+	if conv.UserID != u.ID && u.Role != "admin" && u.Role != "expert" {
+		writeError(w, http.StatusNotFound, "conversation not found")
+		return conv, false
+	}
+	return conv, true
+}
+
 // createConversation starts a dialog. If message is present it is saved and
 // an answer run is queued — the response then includes run identifiers.
 func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
 	var req createConversationRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	user, _ := s.currentUser(r)
 
 	conv, err := s.store.CreateConversation(r.Context(), model.Conversation{
 		UserID: user.ID,
@@ -52,7 +75,10 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
-	user, _ := s.currentUser(r)
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
 	convs, err := s.store.ListConversations(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list conversations")
@@ -62,13 +88,12 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
-	conv, err := s.store.GetConversation(r.Context(), r.PathValue("id"))
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "conversation not found")
+	user, ok := s.requireUser(w, r)
+	if !ok {
 		return
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to get conversation")
+	conv, ok := s.requireConversationAccess(w, r, user, r.PathValue("id"))
+	if !ok {
 		return
 	}
 	msgs, err := s.store.ListMessages(r.Context(), conv.ID)
@@ -87,12 +112,19 @@ type renameRequest struct {
 }
 
 func (s *Server) renameConversation(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
 	var req renameRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if strings.TrimSpace(req.Title) == "" {
 		writeError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	if _, ok := s.requireConversationAccess(w, r, user, r.PathValue("id")); !ok {
 		return
 	}
 	conv, err := s.store.UpdateConversationTitle(r.Context(), r.PathValue("id"), req.Title)
@@ -108,6 +140,13 @@ func (s *Server) renameConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteConversation(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	if _, ok := s.requireConversationAccess(w, r, user, r.PathValue("id")); !ok {
+		return
+	}
 	err := s.store.DeleteConversation(r.Context(), r.PathValue("id"))
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "conversation not found")
@@ -121,6 +160,13 @@ func (s *Server) deleteConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	if _, ok := s.requireConversationAccess(w, r, user, r.PathValue("id")); !ok {
+		return
+	}
 	msgs, err := s.store.ListMessages(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list messages")
@@ -149,6 +195,10 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "content is required")
 		return
 	}
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
 	conv, err := s.store.GetConversation(r.Context(), r.PathValue("id"))
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "conversation not found")
@@ -158,7 +208,10 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to get conversation")
 		return
 	}
-	user, _ := s.currentUser(r)
+	if conv.UserID != user.ID && user.Role != "admin" && user.Role != "expert" {
+		writeError(w, http.StatusNotFound, "conversation not found")
+		return
+	}
 
 	out, err := s.queueAnswerRun(r, conv.ID, user.ID, content)
 	if err != nil {

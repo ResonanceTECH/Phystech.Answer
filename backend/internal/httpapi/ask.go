@@ -23,6 +23,9 @@ type askResponse struct {
 // stateless endpoint kept for the existing frontend. The conversations
 // API (POST /api/v1/conversations/{id}/messages) is the persistent path.
 func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireUser(w, r); !ok {
+		return
+	}
 	var req askRequest
 	if !decodeJSON(w, r, &req) {
 		return

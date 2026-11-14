@@ -1011,6 +1011,21 @@ func (p *Postgres) GetAnswerByRun(ctx context.Context, runID string) (model.Answ
 	return a, steps, citations, nil
 }
 
+// GetAnswer returns the answer row joined with its run's conversation id.
+func (p *Postgres) GetAnswer(ctx context.Context, id string) (model.Answer, error) {
+	var a model.Answer
+	err := p.pool.QueryRow(ctx, `SELECT a.id, a.run_id, COALESCE(r.conversation_id,''),
+		a.status, a.summary, a.warnings, a.missing_information, a.created_at
+		FROM answers a JOIN answer_runs r ON r.id = a.run_id
+		WHERE a.id=$1`, id).Scan(
+		&a.ID, &a.RunID, &a.ConversationID, &a.Status, &a.Summary,
+		&a.Warnings, &a.MissingInformation, &a.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.Answer{}, ErrNotFound
+	}
+	return a, err
+}
+
 func (p *Postgres) ListAnswerSteps(ctx context.Context, answerID string) ([]model.AnswerStep, error) {
 	rows, err := p.pool.Query(ctx, `SELECT id, step_order, title, description,
 		responsible, deadline, condition_text, required

@@ -72,6 +72,8 @@ services:
       # Origin фронтенда (cookie-сессии не работают с '*').
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
       ML_SERVICE_URL: http://ml:8000
+      # LLM-генерация на 4B-модели может идти 1-3 мин; держим ниже WriteTimeout ml (180s).
+      ML_TIMEOUT_SECONDS: ${ML_TIMEOUT_SECONDS:-170}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       DATABASE_URL: postgresql://fiztech_admin:${POSTGRES_PASSWORD:-fiztech_dev_hack}@postgres:5432/fiztech_answer
       STORAGE_PATH: /data/files

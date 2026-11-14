@@ -16,21 +16,45 @@ type documentResponse struct {
 	ReadAt *time.Time `json:"readAt,omitempty"`
 }
 
-// listDocuments returns all documents. If ?userId= is provided, each document
-// carries the read status for that user.
+func isPrivileged(u model.User) bool {
+	return u.Role == "admin" || u.Role == "expert"
+}
+
+// listDocuments returns all documents visible to the caller. If ?userId= is
+// provided (admin only), each document carries the read status for that user.
 func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
 	docs, err := s.store.ListDocuments(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list documents")
 		return
 	}
 
-	var reads map[string]time.Time
-	if userID := r.URL.Query().Get("userId"); userID != "" {
-		if reads, err = s.store.ReadStatus(r.Context(), userID); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to load read status")
+	// Access gate (spec §13): restricted docs are visible only to admin/expert.
+	visible := docs[:0]
+	for _, d := range docs {
+		if d.AccessLevel == "restricted" && !isPrivileged(user) {
+			continue
+		}
+		visible = append(visible, d)
+	}
+	docs = visible
+
+	readFor := user.ID
+	if q := r.URL.Query().Get("userId"); q != "" {
+		if !isPrivileged(user) {
+			writeError(w, http.StatusForbidden, "cannot read status of another user")
 			return
 		}
+		readFor = q
+	}
+	reads, err := s.store.ReadStatus(r.Context(), readFor)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load read status")
+		return
 	}
 
 	resp := make([]documentResponse, 0, len(docs))
@@ -52,6 +76,9 @@ type documentRequest struct {
 }
 
 func (s *Server) createDocument(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
 	var req documentRequest
 	if !decodeJSON(w, r, &req) {
 		return
@@ -75,6 +102,10 @@ func (s *Server) createDocument(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getDocument(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
 	doc, err := s.store.GetDocument(r.Context(), r.PathValue("id"))
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "document not found")
@@ -84,10 +115,17 @@ func (s *Server) getDocument(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to get document")
 		return
 	}
+	if doc.AccessLevel == "restricted" && !isPrivileged(user) {
+		writeError(w, http.StatusNotFound, "document not found")
+		return
+	}
 	writeJSON(w, http.StatusOK, doc)
 }
 
 func (s *Server) updateDocument(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
 	var req documentRequest
 	if !decodeJSON(w, r, &req) {
 		return
@@ -116,6 +154,9 @@ func (s *Server) updateDocument(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
 	err := s.store.DeleteDocument(r.Context(), r.PathValue("id"))
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "document not found")
@@ -134,16 +175,26 @@ type markReadRequest struct {
 }
 
 func (s *Server) markRead(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
 	var req markReadRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if strings.TrimSpace(req.UserID) == "" {
-		writeError(w, http.StatusBadRequest, "userId is required")
-		return
+	// Read marks always apply to the session user; admins may mark on
+	// behalf of another user explicitly.
+	target := user.ID
+	if req.UserID != "" && req.UserID != user.ID {
+		if !isPrivileged(user) {
+			writeError(w, http.StatusForbidden, "cannot mark read for another user")
+			return
+		}
+		target = req.UserID
 	}
 
-	readAt, err := s.store.MarkRead(r.Context(), r.PathValue("id"), req.UserID)
+	readAt, err := s.store.MarkRead(r.Context(), r.PathValue("id"), target)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "document or user not found")
 		return
@@ -154,7 +205,7 @@ func (s *Server) markRead(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"documentId": r.PathValue("id"),
-		"userId":     req.UserID,
+		"userId":     target,
 		"readAt":     readAt,
 	})
 }
