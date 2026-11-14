@@ -1,7 +1,5 @@
 // Package httpapi exposes the ML service over HTTP: document indexing,
-// full sync, the /ask endpoint consumed by the Go backend, and the
-// /internal/v1/* computation API (parse/ocr/embeddings/rerank/analyze/
-// generate/verify/relations).
+// full sync and the /ask endpoint consumed by the Go backend.
 package httpapi
 
 import (
@@ -31,7 +29,6 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", s.health)
-	mux.HandleFunc("GET /health/live", s.health)
 
 	mux.HandleFunc("GET /api/documents", s.listDocuments)
 	mux.HandleFunc("POST /api/documents", s.upsertDocument)
@@ -42,56 +39,30 @@ func (s *Server) Handler() http.Handler {
 	// The Go backend proxies POST {ML_SERVICE_URL}/ask; keep both aliases.
 	mux.HandleFunc("POST /api/ask", s.ask)
 	mux.HandleFunc("POST /ask", s.ask)
-
-	// Internal computation API (spec §20).
-	mux.HandleFunc("POST /internal/v1/documents/parse", s.parseDocument)
-	mux.HandleFunc("POST /internal/v1/documents/ocr", s.ocrDocument)
-	mux.HandleFunc("POST /internal/v1/embeddings", s.embeddings)
-	mux.HandleFunc("POST /internal/v1/rerank", s.rerankEndpoint)
-	mux.HandleFunc("POST /internal/v1/questions/analyze", s.analyzeQuestion)
-	mux.HandleFunc("POST /internal/v1/answers/generate", s.generateAnswer)
-	mux.HandleFunc("POST /internal/v1/answers/verify", s.verifyAnswer)
-	mux.HandleFunc("POST /internal/v1/relations/extract", s.extractRelations)
-	mux.HandleFunc("GET /internal/v1/relations", s.listRelations)
-	mux.HandleFunc("GET /internal/v1/stats", s.stats)
+	mux.HandleFunc("POST /api/retrieve", s.retrieve)
 
 	return s.cors(s.recoverer(s.logging(mux)))
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	docs, chunks := s.rag.Stats()
+	withVec, _ := s.rag.Store().VectorCoverage()
+	o := s.rag.Options()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":    "ok",
-		"documents": docs,
-		"chunks":    chunks,
+		"status":     "ok",
+		"documents":  docs,
+		"chunks":     chunks,
+		"vectors":    withVec,
+		"embeddings": s.rag.HasEmbedder(),
+		"llm":        s.rag.HasChat(),
+		"mode":       o.Mode,
+		"reranker":   o.Reranker,
+		"decider":    s.rag.HasDecider(),
+		"amendments": o.Amendments,
 	})
 }
 
-func (s *Server) stats(w http.ResponseWriter, _ *http.Request) {
-	docs, chunks := s.rag.Stats()
-	rels := s.rag.Relations()
-	n := 0
-	for _, v := range rels {
-		n += len(v)
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"documents": docs,
-		"chunks":    chunks,
-		"relations": n,
-	})
-}
-
-type documentRequest struct {
-	ID             string   `json:"id"`
-	Title          string   `json:"title"`
-	Content        string   `json:"content"`
-	Tags           []string `json:"tags"`
-	DocumentNumber string   `json:"documentNumber"`
-	DocumentType   string   `json:"documentType"`
-	DocumentDate   string   `json:"documentDate"`
-	Category       string   `json:"category"`
-	LegalStatus    string   `json:"legalStatus"`
-}
+type documentRequest = model.Document
 
 func (s *Server) listDocuments(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.rag.ListDocuments())
@@ -118,13 +89,7 @@ func (s *Server) upsertDocument(w http.ResponseWriter, r *http.Request) {
 		req.ID = "doc_" + req.Title // fallback; backend always sends an ID
 	}
 
-	doc := model.Document{
-		ID: req.ID, Title: req.Title, Content: req.Content, Tags: req.Tags,
-		DocumentNumber: req.DocumentNumber, DocumentType: req.DocumentType,
-		DocumentDate: req.DocumentDate, Category: req.Category,
-		LegalStatus: req.LegalStatus,
-	}
-	if err := s.rag.IndexDocument(r.Context(), doc); err != nil {
+	if err := s.rag.IndexDocument(r.Context(), req); err != nil {
 		log.Printf("index document %s: %v", req.ID, err)
 		writeError(w, http.StatusInternalServerError, "failed to index document")
 		return
@@ -168,6 +133,78 @@ func (s *Server) syncDocuments(w http.ResponseWriter, r *http.Request) {
 type askRequest struct {
 	Question string `json:"question"`
 	UserID   string `json:"userId,omitempty"`
+	// Options override the pipeline configuration (evaluation / ablation).
+	Options *optionsOverride `json:"options,omitempty"`
+}
+
+type optionsOverride struct {
+	Mode       *string `json:"mode,omitempty"`
+	Rerank     *bool   `json:"rerank,omitempty"`   // legacy: true → llm
+	Reranker   *string `json:"reranker,omitempty"` // off | llm | decision
+	Amendments *bool   `json:"amendments,omitempty"`
+	Decompose  *bool   `json:"decompose,omitempty"`
+	TopK       *int    `json:"topK,omitempty"`
+}
+
+func (s *Server) options(o *optionsOverride) rag.Options {
+	opts := s.rag.Options()
+	if o == nil {
+		return opts
+	}
+	if o.Mode != nil {
+		opts.Mode = *o.Mode
+	}
+	if o.Rerank != nil {
+		opts.Reranker = map[bool]string{true: "llm", false: ""}[*o.Rerank]
+	}
+	if o.Reranker != nil {
+		opts.Reranker = *o.Reranker
+		if opts.Reranker == "off" {
+			opts.Reranker = ""
+		}
+	}
+	if o.Amendments != nil {
+		opts.Amendments = *o.Amendments
+	}
+	if o.Decompose != nil {
+		opts.Decompose = *o.Decompose
+	}
+	if o.TopK != nil {
+		opts.TopK = *o.TopK
+	}
+	return opts
+}
+
+type retrievedChunk struct {
+	DocumentID string  `json:"documentId"`
+	Title      string  `json:"title"`
+	Number     string  `json:"number,omitempty"`
+	Date       string  `json:"date,omitempty"`
+	Section    string  `json:"section,omitempty"`
+	Heading    string  `json:"heading,omitempty"`
+	Score      float64 `json:"score"`
+	Text       string  `json:"text"`
+}
+
+// retrieve runs retrieval only (no generation) — for evaluation and the
+// "how the answer was found" view.
+func (s *Server) retrieve(w http.ResponseWriter, r *http.Request) {
+	var req askRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.Question) == "" {
+		writeError(w, http.StatusBadRequest, "question is required")
+		return
+	}
+	trace := &model.Trace{}
+	chunks, gate := s.rag.Retrieve(r.Context(), strings.TrimSpace(req.Question), s.options(req.Options), trace)
+	out := make([]retrievedChunk, 0, len(chunks))
+	for _, sc := range chunks {
+		c := sc.Chunk
+		out = append(out, retrievedChunk{c.DocID, c.DocTitle, c.DocNumber, c.DocDate, c.Section, c.Heading, sc.Score, c.Text})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"chunks": out, "evidence": gate, "trace": trace})
 }
 
 func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
@@ -175,161 +212,12 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	resp, err := s.rag.Ask(r.Context(), req.Question)
+	resp, err := s.rag.AskWith(r.Context(), req.Question, s.options(req.Options))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
-}
-
-// ---------- internal/v1 endpoints ----------
-
-type analyzeRequest struct {
-	Question string `json:"question"`
-}
-
-func (s *Server) analyzeQuestion(w http.ResponseWriter, r *http.Request) {
-	var req analyzeRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	out, err := s.rag.AnalyzeQuestion(r.Context(), req.Question)
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *Server) generateAnswer(w http.ResponseWriter, r *http.Request) {
-	var req askRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	payload, err := s.rag.AskStructured(r.Context(), req.Question)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, payload)
-}
-
-type verifyRequest struct {
-	Question string              `json:"question"`
-	Answer   model.AnswerPayload `json:"answer"`
-}
-
-func (s *Server) verifyAnswer(w http.ResponseWriter, r *http.Request) {
-	var req verifyRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	// Re-run retrieval for the question to get the same context.
-	out, err := s.rag.VerifyAnswerWithContext(r.Context(), req.Question, req.Answer)
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *Server) extractRelations(w http.ResponseWriter, r *http.Request) {
-	var req documentRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	if strings.TrimSpace(req.Content) == "" {
-		writeError(w, http.StatusBadRequest, "content is required")
-		return
-	}
-	if strings.TrimSpace(req.Title) == "" {
-		writeError(w, http.StatusBadRequest, "title is required")
-		return
-	}
-	doc := model.Document{ID: req.ID, Title: req.Title, Content: req.Content}
-	out, err := s.rag.ExtractRelationsLLM(r.Context(), doc)
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"relations": out})
-}
-
-func (s *Server) listRelations(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"relations": s.rag.Relations()})
-}
-
-// parseDocument is a stub that reports the service cannot parse files
-// itself — parsing happens in backend jobs / offline pipeline. Kept for
-// contract completeness; returns method-not-allowed style guidance.
-func (s *Server) parseDocument(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, http.StatusNotImplemented,
-		"document parsing is performed by the backend pipeline; use /api/documents to index extracted text")
-}
-
-// ocrDocument is likewise handled by the offline OCR pipeline
-// (ml/scripts/parse_corpus.sh). Endpoint reserved for future runtime OCR.
-func (s *Server) ocrDocument(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, http.StatusNotImplemented,
-		"OCR runs in the offline pipeline (scripts/parse_corpus.sh); endpoint reserved")
-}
-
-type embedRequest struct {
-	Input []string `json:"input"`
-	Model string   `json:"model,omitempty"`
-}
-
-func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
-	var req embedRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	if len(req.Input) == 0 {
-		writeError(w, http.StatusBadRequest, "input is required")
-		return
-	}
-	if len(req.Input) > 256 {
-		writeError(w, http.StatusBadRequest, "too many inputs (max 256)")
-		return
-	}
-	vecs, err := s.rag.EmbedTexts(r.Context(), req.Input)
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
-		return
-	}
-	type item struct {
-		Index     int       `json:"index"`
-		Embedding []float32 `json:"embedding"`
-	}
-	data := make([]item, len(vecs))
-	for i, v := range vecs {
-		data[i] = item{Index: i, Embedding: v}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
-}
-
-type rerankRequest struct {
-	Query     string   `json:"query"`
-	Documents []string `json:"documents"`
-	TopN      int      `json:"top_n,omitempty"`
-}
-
-func (s *Server) rerankEndpoint(w http.ResponseWriter, r *http.Request) {
-	var req rerankRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	if strings.TrimSpace(req.Query) == "" || len(req.Documents) == 0 {
-		writeError(w, http.StatusBadRequest, "query and documents are required")
-		return
-	}
-	out, err := s.rag.RerankTexts(r.Context(), req.Query, req.Documents, req.TopN)
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "results": out})
 }
 
 func (s *Server) cors(next http.Handler) http.Handler {

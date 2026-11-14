@@ -10,16 +10,23 @@ import {
   Box,
   Button,
   Chip,
+  FormControl,
+  InputLabel,
   LinearProgress,
+  MenuItem,
   Paper,
+  Select,
   Stack,
+  TextField,
   Typography,
 } from '@mui/material'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { paths } from '@/app/router/routePaths'
+import { useDocumentsBrief } from '@/entities/document'
 import { formatDocDate } from '@/entities/source-reference'
+import { FOLDERS } from '@/features/admin-kb'
 import { api, apiErrorMessage, queryKeys } from '@/shared/api'
 import { PageHeader } from '@/shared/ui'
 
@@ -84,14 +91,24 @@ export function DocumentUploadPage() {
   const [rows, setRows] = useState<Row[]>([])
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState('')
+  const [category, setCategory] = useState('')
+  const [visibility, setVisibility] = useState<'active' | 'hidden'>('active')
+  const [revisionDocumentId, setRevisionDocumentId] = useState('')
+  const [assignMode, setAssignMode] = useState<'none' | 'required' | 'optional'>('none')
+  const [dueDate, setDueDate] = useState('')
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const documents = useDocumentsBrief()
 
   const patch = (key: string, p: Partial<Row>) =>
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...p } : r)))
 
   const upload = async (files: File[]) => {
     setError('')
+    if (revisionDocumentId && files.length !== 1) {
+      setError('Для новой редакции выберите ровно один файл.')
+      return
+    }
     const batch: Row[] = files.map((f, i) => ({
       key: `${Date.now()}-${i}-${f.name}`,
       name: f.name,
@@ -105,6 +122,9 @@ export function DocumentUploadPage() {
     if (valid.length === 0) return
     const form = new FormData()
     valid.forEach((f) => form.append('files', f, f.name))
+    if (category) form.append('category', category)
+    form.append('visibility', visibility)
+    if (revisionDocumentId) form.append('documentId', revisionDocumentId)
     try {
       const resp = await api.postForm<{ results: UploadResult[] }>('/v1/admin/documents/upload', form)
       for (const res of resp.results) {
@@ -112,6 +132,14 @@ export function DocumentUploadPage() {
         if (!row) continue
         if (res.status === 'queued') {
           patch(row.key, { stage: 'processing', documentId: res.documentId, versionId: res.versionId })
+          if (assignMode !== 'none' && res.documentId) {
+            await api.post('/v1/admin/assignments', {
+              documentIds: [res.documentId],
+              targetType: 'all',
+              requirement: assignMode,
+              dueDate: assignMode === 'required' && dueDate ? dueDate : undefined,
+            })
+          }
         } else if (res.status === 'duplicate') {
           patch(row.key, { stage: 'duplicate', message: 'Такой файл уже загружен — повторная обработка не нужна' })
         } else {
@@ -165,12 +193,69 @@ export function DocumentUploadPage() {
     if (list && list.length > 0) void upload(Array.from(list))
   }
 
+  const reprocess = async (row: Row) => {
+    if (!row.documentId) return
+    setError('')
+    try {
+      await api.post(`/v1/admin/documents/${row.documentId}/reprocess`, {})
+      patch(row.key, { stage: 'processing', message: undefined })
+    } catch (e) {
+      setError(apiErrorMessage(e))
+    }
+  }
+
   return (
     <Stack spacing={3} sx={{ maxWidth: 960 }}>
       <PageHeader
         title="Загрузка документов"
         subtitle="Перетащите приказы и регламенты — система сама распознает текст (включая сканы), определит реквизиты и пункты и сразу подключит документ к ассистенту."
       />
+
+      <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+          <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
+            <InputLabel id="revision-label">Тип загрузки</InputLabel>
+            <Select
+              labelId="revision-label"
+              label="Тип загрузки"
+              value={revisionDocumentId}
+              onChange={(e) => setRevisionDocumentId(e.target.value)}
+            >
+              <MenuItem value="">Новый документ</MenuItem>
+              {(documents.data ?? []).map((d) => (
+                <MenuItem key={d.id} value={d.id}>Новая редакция: {d.title}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 190 }} disabled={Boolean(revisionDocumentId)}>
+            <InputLabel id="folder-label">Папка</InputLabel>
+            <Select labelId="folder-label" label="Папка" value={category} onChange={(e) => setCategory(e.target.value)}>
+              <MenuItem value="">Определить автоматически</MenuItem>
+              {FOLDERS.map((f) => <MenuItem key={f} value={f}>{f}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 170 }} disabled={Boolean(revisionDocumentId)}>
+            <InputLabel id="visibility-label">Доступность</InputLabel>
+            <Select labelId="visibility-label" label="Доступность" value={visibility} onChange={(e) => setVisibility(e.target.value as 'active' | 'hidden')}>
+              <MenuItem value="active">Сразу активен</MenuItem>
+              <MenuItem value="hidden">Скрыт до проверки</MenuItem>
+            </Select>
+          </FormControl>
+        </Stack>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 250 }} disabled={Boolean(revisionDocumentId)}>
+            <InputLabel id="assignment-label">Назначение</InputLabel>
+            <Select labelId="assignment-label" label="Назначение" value={assignMode} onChange={(e) => setAssignMode(e.target.value as typeof assignMode)}>
+              <MenuItem value="none">Не назначать</MenuItem>
+              <MenuItem value="required">Всем обязательно</MenuItem>
+              <MenuItem value="optional">Всем для KPI</MenuItem>
+            </Select>
+          </FormControl>
+          {assignMode === 'required' && !revisionDocumentId && (
+            <TextField size="small" type="date" label="Срок ознакомления" value={dueDate} onChange={(e) => setDueDate(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+          )}
+        </Stack>
+      </Paper>
 
       <Paper
         elevation={0}
@@ -201,7 +286,7 @@ export function DocumentUploadPage() {
           ref={inputRef}
           type="file"
           accept={ACCEPT}
-          multiple
+          multiple={!revisionDocumentId}
           hidden
           onChange={(e) => {
             onFiles(e.target.files)
@@ -235,6 +320,7 @@ export function DocumentUploadPage() {
                   state: { question: `Кратко: что устанавливает документ «${r.name.replace(/\.[^.]+$/, '')}»? Какие действия и сроки?` },
                 })
               }
+              onReprocess={() => void reprocess(r)}
             />
           ))}
         </Stack>
@@ -243,7 +329,7 @@ export function DocumentUploadPage() {
   )
 }
 
-function UploadRow({ row, onAsk }: { row: Row; onAsk: () => void }) {
+function UploadRow({ row, onAsk, onReprocess }: { row: Row; onAsk: () => void; onReprocess: () => void }) {
   const view = STAGE_VIEW[row.stage]
   const icon =
     row.stage === 'ready' ? (
@@ -292,6 +378,11 @@ function UploadRow({ row, onAsk }: { row: Row; onAsk: () => void }) {
         {row.stage === 'ready' && (
           <Button size="small" startIcon={<ForumOutlinedIcon />} onClick={onAsk}>
             Спросить
+          </Button>
+        )}
+        {row.stage === 'review' && row.documentId && (
+          <Button size="small" onClick={onReprocess}>
+            Обработать снова
           </Button>
         )}
       </Stack>

@@ -8,7 +8,7 @@ import { config } from '@/shared/config/env'
 import { buildMatcher, highlightDom, splitByMatches } from '@/shared/lib'
 import './document-viewer.css'
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+pdfjs.GlobalWorkerOptions.workerSrc = `${new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()}?v=2`
 
 type Kind = 'pdf' | 'docx' | 'xlsx' | 'text' | 'none'
 

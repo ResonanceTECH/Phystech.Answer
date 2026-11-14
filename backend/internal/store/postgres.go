@@ -192,14 +192,47 @@ func (p *Postgres) UpdateDocument(ctx context.Context, doc model.Document) (mode
 }
 
 func (p *Postgres) DeleteDocument(ctx context.Context, id string) error {
-	res, err := p.pool.Exec(ctx, `DELETE FROM documents WHERE id=$1`, id)
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx, `SELECT DISTINCT source_file_id
+		FROM document_versions
+		WHERE document_id=$1 AND source_file_id IS NOT NULL`, id)
+	if err != nil {
+		return err
+	}
+	var sourceFileIDs []string
+	for rows.Next() {
+		var fileID string
+		if err := rows.Scan(&fileID); err != nil {
+			rows.Close()
+			return err
+		}
+		sourceFileIDs = append(sourceFileIDs, fileID)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	res, err := tx.Exec(ctx, `DELETE FROM documents WHERE id=$1`, id)
 	if err != nil {
 		return err
 	}
 	if res.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
+	for _, fileID := range sourceFileIDs {
+		if _, err := tx.Exec(ctx, `DELETE FROM source_files sf
+			WHERE sf.id=$1
+			  AND NOT EXISTS (SELECT 1 FROM document_versions v WHERE v.source_file_id=sf.id)`, fileID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func defaultStr(s, def string) string {

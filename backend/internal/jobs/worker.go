@@ -230,8 +230,13 @@ func (r *Runner) notifyPublished(ctx context.Context, p DocumentParsePayload) {
 	if err != nil || len(users) == 0 {
 		return
 	}
-	if err := r.st.CreateNotifications(ctx, users, "new_document", doc.ID,
-		"На платформе новый документ", fmt.Sprintf("«%s» добавлен в базу знаний.", doc.Title)); err != nil {
+	kind, title, body := "new_document", "На платформе новый документ", fmt.Sprintf("«%s» добавлен в базу знаний.", doc.Title)
+	if versions, err := r.st.ListVersions(ctx, doc.ID); err == nil && len(versions) > 1 {
+		kind = "updated"
+		title = "Документ обновлён"
+		body = fmt.Sprintf("Для документа «%s» опубликована новая редакция.", doc.Title)
+	}
+	if err := r.st.CreateNotifications(ctx, users, kind, doc.ID, title, body); err != nil {
 		log.Printf("jobs: notify %s: %v", doc.ID, err)
 	}
 }

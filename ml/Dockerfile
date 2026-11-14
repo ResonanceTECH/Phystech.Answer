@@ -1,17 +1,15 @@
 FROM golang:1-alpine AS build
 WORKDIR /app
-COPY go.mod ./
+COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /bin/ml ./cmd/ml
+RUN CGO_ENABLED=0 go build -o /bin/ml ./cmd/ml && CGO_ENABLED=0 go build -o /bin/eval ./cmd/eval
 
 FROM alpine:3.21
 RUN adduser -D appuser && mkdir -p /data && chown appuser /data
+WORKDIR /data
 USER appuser
 COPY --from=build /bin/ml /ml
-# Промпт-шаблоны читаются с диска в рантайме (LLM_PROMPT_DIR).
-COPY --from=build /app/prompts /app/prompts
-WORKDIR /app
-ENV LLM_PROMPT_DIR=/app/prompts
+COPY --from=build /bin/eval /eval
 EXPOSE 8000
 ENTRYPOINT ["/ml"]

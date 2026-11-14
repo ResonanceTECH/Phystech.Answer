@@ -4,6 +4,7 @@ import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
 import DriveFileMoveOutlinedIcon from '@mui/icons-material/DriveFileMoveOutlined'
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined'
+import RestartAltOutlinedIcon from '@mui/icons-material/RestartAltOutlined'
 import UnarchiveOutlinedIcon from '@mui/icons-material/UnarchiveOutlined'
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
@@ -37,6 +38,7 @@ import {
   VISIBILITY_LABEL,
   useDeleteDocuments,
   usePatchDocuments,
+  useReprocessDocument,
   type Visibility,
 } from '@/features/admin-kb'
 import { AssignDialog } from '@/features/admin-kb/ui/AssignDialog'
@@ -62,6 +64,7 @@ export function AdminDocumentsPage() {
   const documents = useDocumentsBrief()
   const patch = usePatchDocuments()
   const remove = useDeleteDocuments()
+  const reprocess = useReprocessDocument()
 
   const [tab, setTab] = useState<Visibility>('active')
   const [folder, setFolder] = useState<string>(ALL)
@@ -105,7 +108,7 @@ export function AdminDocumentsPage() {
   if (documents.isLoading) return <LoadingState />
   if (documents.isError) return <ErrorState onRetry={() => void documents.refetch()} />
 
-  const error = patch.error ?? remove.error
+  const error = patch.error ?? remove.error ?? reprocess.error
 
   return (
     <Box>
@@ -248,6 +251,16 @@ export function AdminDocumentsPage() {
                     <Tooltip title="Статус обработки файла">
                       <Chip size="small" color={d.processingStatus === 'requires_review' ? 'warning' : 'info'} label={d.processingStatus === 'requires_review' ? 'Требует проверки' : 'Обрабатывается'} />
                     </Tooltip>
+                  )}
+                  {(d.processingStatus === 'requires_review' || d.processingStatus === 'failed') && (
+                    <Button
+                      size="small"
+                      startIcon={<RestartAltOutlinedIcon />}
+                      disabled={reprocess.isPending}
+                      onClick={() => reprocess.mutate(d.id)}
+                    >
+                      Обработать снова
+                    </Button>
                   )}
                   {tab !== 'active' && <Chip size="small" variant="outlined" label={VISIBILITY_LABEL[vis(d)]} />}
                 </Stack>

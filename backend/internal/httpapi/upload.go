@@ -57,21 +57,31 @@ func (s *Server) uploadDocuments(w http.ResponseWriter, r *http.Request) {
 	titleOverride := strings.TrimSpace(r.FormValue("title"))
 	tags := splitCSV(r.FormValue("tags"))
 	category := strings.TrimSpace(r.FormValue("category"))
+	visibility := strings.TrimSpace(r.FormValue("visibility"))
+	documentID := strings.TrimSpace(r.FormValue("documentId"))
 	docType := strings.TrimSpace(r.FormValue("documentType"))
 	docNumber := strings.TrimSpace(r.FormValue("documentNumber"))
+	if visibility != "" && !validVisibility[visibility] {
+		writeError(w, http.StatusBadRequest, "visibility must be active, hidden or archived")
+		return
+	}
+	if documentID != "" && len(files) != 1 {
+		writeError(w, http.StatusBadRequest, "a new revision must contain exactly one file")
+		return
+	}
 
 	results := make([]uploadResult, 0, len(files))
 	for _, fh := range files {
 		results = append(results, s.processUpload(r, user, fh.Filename, func() (io.ReadCloser, error) {
 			return fh.Open()
-		}, titleOverride, tags, category, docType, docNumber))
+		}, titleOverride, tags, category, visibility, documentID, docType, docNumber))
 	}
 
 	status := http.StatusOK
 	writeJSON(w, status, map[string]any{"results": results})
 }
 
-func (s *Server) processUpload(r *http.Request, user model.User, filename string, open func() (io.ReadCloser, error), titleOverride string, tags []string, category, docType, docNumber string) uploadResult {
+func (s *Server) processUpload(r *http.Request, user model.User, filename string, open func() (io.ReadCloser, error), titleOverride string, tags []string, category, visibility, documentID, docType, docNumber string) uploadResult {
 	rc, err := open()
 	if err != nil {
 		return uploadResult{Filename: filename, Status: "rejected", Error: "cannot read file"}
@@ -82,7 +92,8 @@ func (s *Server) processUpload(r *http.Request, user model.User, filename string
 		return uploadResult{Filename: filename, Status: "rejected", Error: "cannot read file"}
 	}
 	return s.ingestFile(r.Context(), user.ID, filename, data, ingestOptions{
-		Title: titleOverride, Tags: tags, Category: category, DocType: docType, DocNumber: docNumber,
+		Title: titleOverride, Tags: tags, Category: category, Visibility: visibility,
+		DocumentID: documentID, DocType: docType, DocNumber: docNumber,
 	})
 }
 
@@ -90,6 +101,7 @@ type ingestOptions struct {
 	Title, Category, DocType, DocNumber string
 	Tags                                []string
 	Visibility                          string // "" = active; "hidden" — до проверки
+	DocumentID                          string // non-empty = add a new version to this document
 }
 
 // ingestFile stores a file, creates the document card and enqueues parsing.
@@ -147,31 +159,49 @@ func (s *Server) ingestFile(ctx context.Context, uploaderID, filename string, da
 	}
 
 	meta := docmeta.FromFilename(filename)
-	title := firstNonEmpty(opt.Title, meta.Title)
-	doc, err := s.store.CreateDocument(ctx, model.Document{
-		Title:          title,
-		DocumentNumber: firstNonEmpty(opt.DocNumber, meta.Number),
-		DocumentType:   firstNonEmpty(opt.DocType, meta.Type),
-		DocumentDate:   meta.Date,
-		Category:       firstNonEmpty(opt.Category, docmeta.SuggestFolder(title)),
-		Visibility:     opt.Visibility,
-		Tags:           opt.Tags,
-		SourceFileID:   fileRec.ID,
-	})
-	if err != nil {
-		res.Status = "rejected"
-		res.Error = "failed to create document"
-		return res
+	var version model.DocumentVersion
+	if opt.DocumentID != "" {
+		if _, err := s.store.GetDocument(ctx, opt.DocumentID); err != nil {
+			res.Status = "rejected"
+			res.Error = "document for new revision not found"
+			return res
+		}
+		version, err = s.store.CreateVersion(ctx, model.DocumentVersion{
+			DocumentID: opt.DocumentID, SourceFileID: fileRec.ID,
+			ProcessingStatus: "pending", LegalStatus: "in_force", ReviewStatus: "pending",
+		})
+		res.DocumentID = opt.DocumentID
+	} else {
+		title := firstNonEmpty(opt.Title, meta.Title)
+		doc, createErr := s.store.CreateDocument(ctx, model.Document{
+			Title:          title,
+			DocumentNumber: firstNonEmpty(opt.DocNumber, meta.Number),
+			DocumentType:   firstNonEmpty(opt.DocType, meta.Type),
+			DocumentDate:   meta.Date,
+			Category:       firstNonEmpty(opt.Category, docmeta.SuggestFolder(title)),
+			Visibility:     opt.Visibility,
+			Tags:           opt.Tags,
+			SourceFileID:   fileRec.ID,
+		})
+		if createErr != nil {
+			res.Status = "rejected"
+			res.Error = "failed to create document"
+			return res
+		}
+		res.DocumentID = doc.ID
+		vers, listErr := s.store.ListVersions(ctx, doc.ID)
+		if listErr != nil || len(vers) == 0 {
+			res.Status = "rejected"
+			res.Error = "failed to create version"
+			return res
+		}
+		version = vers[0]
 	}
-	res.DocumentID = doc.ID
-
-	vers, err := s.store.ListVersions(ctx, doc.ID)
-	if err != nil || len(vers) == 0 {
+	if err != nil {
 		res.Status = "rejected"
 		res.Error = "failed to create version"
 		return res
 	}
-	version := vers[0]
 	res.VersionID = version.ID
 
 	if err := s.store.SetVersionStatus(ctx, version.ID, "pending", ""); err != nil {
@@ -181,7 +211,7 @@ func (s *Server) ingestFile(ctx context.Context, uploaderID, filename string, da
 	}
 
 	payload, _ := json.Marshal(jobs.DocumentParsePayload{
-		FileID: fileRec.ID, DocumentID: doc.ID, VersionID: version.ID,
+		FileID: fileRec.ID, DocumentID: res.DocumentID, VersionID: version.ID,
 		Filename: filename, StorageKey: storageKey,
 	})
 	job, err := s.store.EnqueueJob(ctx, model.Job{

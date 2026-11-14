@@ -9,70 +9,50 @@ import (
 )
 
 type Config struct {
-	Addr       string
-	CORSOrigin string
-	LLMBaseURL string
-	LLMAPIKey  string
-	LLMModel   string
-	// LLMDisableThinking sends chat_template_kwargs.enable_thinking=false to
-	// llama.cpp servers hosting reasoning models (Qwen3.5/3-Thinking).
-	LLMDisableThinking bool
-	// LLMPromptDir holds versioned prompt templates (analyze/generate/verify).
-	LLMPromptDir string
-
+	Addr         string
+	CORSOrigin   string
+	LLMBaseURL   string
+	LLMAPIKey    string
+	LLMModel     string
+	LLMReasoning string
 	EmbedBaseURL string
 	EmbedAPIKey  string
 	EmbedModel   string
+	IndexPath    string
+	TopK         int
 
-	RerankBaseURL string
-	RerankAPIKey  string
-	RerankModel   string
-	RerankEnabled bool
-
-	IndexPath string
-	TopK      int
-	MinScore  float64
-
-	// Retrieval tuning.
-	RetrieveVectorK  int
-	RetrieveLexK     int
-	RRFK             int
-	RerankCandidates int
-
-	PromptVersion string
+	RetrievalMode string  // bm25|vector|hybrid
+	Reranker      string  // off | llm | decision
+	DecisionURL   string  // /v1/systemone server (H2O-Lightning on llama-server)
+	Amendments    bool    // pull in amending acts
+	Decompose     bool    // split composite questions (LLM)
+	MinVector     float64 // evidence gate (cosine of best fragment)
+	MinBM25       float64 // evidence gate (BM25 of best fragment)
 }
 
 func Load() Config {
 	loadDotEnv(".env")
 
 	return Config{
-		Addr:               ":" + getEnv("PORT", "8000"),
-		CORSOrigin:         getEnv("CORS_ORIGIN", "*"),
-		LLMBaseURL:         envURL("LLM_BASE_URL", "http://127.0.0.1:8081/v1"),
-		LLMAPIKey:          getEnv("LLM_API_KEY", ""),
-		LLMModel:           getEnv("LLM_MODEL", "local"),
-		LLMDisableThinking: getEnv("LLM_DISABLE_THINKING", "true") == "true",
-		LLMPromptDir:       getEnv("LLM_PROMPT_DIR", "prompts"),
-
-		EmbedBaseURL: envURL("EMBED_BASE_URL", "http://127.0.0.1:8082/v1"),
+		Addr:         ":" + getEnv("PORT", "8000"),
+		CORSOrigin:   getEnv("CORS_ORIGIN", "*"),
+		LLMBaseURL:   envURL("LLM_BASE_URL", "http://localhost:11434/v1"),
+		LLMAPIKey:    getEnv("LLM_API_KEY", ""),
+		LLMModel:     getEnv("LLM_MODEL", "qwen3.5:4b"),
+		LLMReasoning: os.Getenv("LLM_REASONING_EFFORT"),
+		EmbedBaseURL: envURL("EMBED_BASE_URL", "http://localhost:11434/v1"),
 		EmbedAPIKey:  getEnv("EMBED_API_KEY", ""),
-		EmbedModel:   getEnv("EMBED_MODEL", "local"),
+		EmbedModel:   getEnv("EMBED_MODEL", "bge-m3"),
+		IndexPath:    getEnv("INDEX_PATH", "index.json"),
+		TopK:         getEnvInt("RAG_TOP_K", 6),
 
-		RerankBaseURL: envURL("RERANK_BASE_URL", "http://127.0.0.1:8083/v1"),
-		RerankAPIKey:  getEnv("RERANK_API_KEY", ""),
-		RerankModel:   getEnv("RERANK_MODEL", "local"),
-		RerankEnabled: getEnv("RERANK_ENABLED", "true") != "false",
-
-		IndexPath: getEnv("INDEX_PATH", "index.json"),
-		TopK:      getEnvInt("RAG_TOP_K", 8),
-		MinScore:  getEnvFloat("RAG_MIN_SCORE", 0.05),
-
-		RetrieveVectorK:  getEnvInt("RETRIEVE_VECTOR_K", 30),
-		RetrieveLexK:     getEnvInt("RETRIEVE_LEX_K", 30),
-		RRFK:             getEnvInt("RRF_K", 60),
-		RerankCandidates: getEnvInt("RERANK_CANDIDATES", 20),
-
-		PromptVersion: getEnv("PROMPT_VERSION", "v1"),
+		RetrievalMode: getEnv("RAG_MODE", "hybrid"),
+		Reranker:      rerankerFromEnv(getEnv("RAG_RERANK", "llm")),
+		DecisionURL:   envURL("DECISION_BASE_URL", "off"),
+		Amendments:    getEnv("RAG_AMENDMENTS", "true") == "true",
+		Decompose:     getEnv("RAG_DECOMPOSE", "true") == "true",
+		MinVector:     getEnvFloat("RAG_MIN_VECTOR", 0.47),
+		MinBM25:       getEnvFloat("RAG_MIN_BM25", 10.0),
 	}
 }
 
@@ -137,5 +117,17 @@ func loadDotEnv(path string) {
 		if err := os.Setenv(key, val); err != nil {
 			log.Printf("config: failed to set %s: %v", key, err)
 		}
+	}
+}
+
+// rerankerFromEnv accepts off|llm|decision (and legacy true/false).
+func rerankerFromEnv(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "off", "false", "none", "0":
+		return ""
+	case "decision", "h2o":
+		return "decision"
+	default:
+		return "llm"
 	}
 }

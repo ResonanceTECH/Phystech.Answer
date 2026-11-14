@@ -11,6 +11,7 @@ import (
 
 	"phystech-answer/backend/internal/config"
 	"phystech-answer/backend/internal/db"
+	"phystech-answer/backend/internal/docmeta"
 	"phystech-answer/backend/internal/httpapi"
 	"phystech-answer/backend/internal/jobs"
 	"phystech-answer/backend/internal/mlclient"
@@ -37,6 +38,19 @@ func main() {
 
 	st := store.NewPostgres(pool)
 	store.SeedDemo(ctx, st, cfg.SeedDemoData)
+	if docs, err := st.ListDocuments(ctx); err == nil {
+		for _, doc := range docs {
+			if doc.Category != "" && doc.Category != "Прочие документы" {
+				continue
+			}
+			folder := docmeta.RefineFolder(doc.Category, doc.Title, doc.Content)
+			if folder != doc.Category {
+				if err := st.SetDocumentFolder(ctx, doc.ID, folder); err != nil {
+					log.Printf("backfill folder %s: %v", doc.ID, err)
+				}
+			}
+		}
+	}
 
 	fs, err := storage.NewLocal(cfg.StoragePath)
 	if err != nil {

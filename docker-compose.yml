@@ -6,12 +6,6 @@
 # Готовность: curl localhost:8000/health → documents: 20.
 name: phystech-answer
 
-x-llama: &llama
-  image: ghcr.io/ggml-org/llama.cpp:server
-  volumes:
-    - llama-cache:/root/.cache/llama.cpp
-  restart: unless-stopped
-
 services:
   postgres:
     image: postgres:17-alpine
@@ -31,67 +25,71 @@ services:
       retries: 12
     restart: unless-stopped
 
-  # ---------- Локальные модели (llama.cpp): данные не покидают контур ----------
-  # Модели скачиваются при первом запуске в volume llama-cache.
-  # На машине с GPU / Apple Silicon можно запустить llama-server на хосте и
-  # указать LLM_BASE_URL / EMBED_BASE_URL / RERANK_BASE_URL в .env (см. ml/README).
-  llm:
-    <<: *llama
-    command: ["-hf", "unsloth/Qwen3.5-4B-GGUF:Q4_K_M", "--alias", "local", "-c", "16384", "-np", "2",
+  # Локальные модели генерации и эмбеддингов. На macOS для ускорения можно
+  # использовать Ollama на хосте через LLM_BASE_URL / EMBED_BASE_URL в .env.
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      retries: 30
+    restart: unless-stopped
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama: { condition: service_healthy }
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "ollama pull ${EMBED_MODEL:-bge-m3} && ollama pull ${LOCAL_LLM_MODEL:-qwen3.5:4b}"]
+    volumes:
+      - ollama:/root/.ollama
+    restart: "no"
+
+  # Калиброванный H2O decision model: реранкинг и evidence gate.
+  decider:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command: ["-hf", "h2oai/h2o-lightning-4b-gguf:${DECIDER_QUANT:-Q4_K_M}",
+              "--alias", "h2oai/h2o-lightning-4b", "-c", "16384", "-np", "4",
               "--no-mmproj", "--host", "0.0.0.0", "--port", "8080"]
+    volumes:
+      # llama.cpp downloads Hugging Face models here; persist the 2+ GB model
+      # so a container recreation does not fetch it again.
+      - llama-cache:/root/.cache/huggingface
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 120
+      retries: 90
       start_period: 30s
-
-  embed:
-    <<: *llama
-    command: ["-hf", "Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0", "--alias", "local", "--embedding", "--pooling", "last",
-              "-c", "8192", "-ub", "8192", "--host", "0.0.0.0", "--port", "8080"]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 120
-      start_period: 30s
-
-  rerank:
-    <<: *llama
-    command: ["-hf", "ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF", "--alias", "local", "--reranking",
-              "-c", "8192", "-ub", "8192", "--host", "0.0.0.0", "--port", "8080"]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 120
-      start_period: 30s
+    restart: unless-stopped
 
   ml:
     build: ./ml
     depends_on:
-      llm: { condition: service_healthy }
-      embed: { condition: service_healthy }
-      rerank: { condition: service_healthy }
+      ollama-pull: { condition: service_completed_successfully }
+      decider: { condition: service_healthy }
     environment:
       PORT: 8000
       CORS_ORIGIN: "*"
       INDEX_PATH: /data/index.json
-      # "off" в любом *_BASE_URL — деградированный режим без компонента.
-      LLM_BASE_URL: ${LLM_BASE_URL:-http://llm:8080/v1}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-local}
-      LLM_DISABLE_THINKING: ${LLM_DISABLE_THINKING:-true}
-      EMBED_BASE_URL: ${EMBED_BASE_URL:-http://embed:8080/v1}
+      LLM_MODEL: ${LLM_MODEL:-qwen3.5:4b}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT-none}
+      EMBED_BASE_URL: ${EMBED_BASE_URL:-http://ollama:11434/v1}
       EMBED_API_KEY: ${EMBED_API_KEY:-}
-      EMBED_MODEL: ${EMBED_MODEL:-local}
-      RERANK_BASE_URL: ${RERANK_BASE_URL:-http://rerank:8080/v1}
-      RERANK_API_KEY: ${RERANK_API_KEY:-}
-      RERANK_MODEL: ${RERANK_MODEL:-local}
-      RERANK_ENABLED: ${RERANK_ENABLED:-true}
-      RAG_TOP_K: ${RAG_TOP_K:-8}
-      RAG_MIN_SCORE: ${RAG_MIN_SCORE:-0.05}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      RAG_MODE: ${RAG_MODE:-hybrid}
+      RAG_RERANK: ${RAG_RERANK:-decision}
+      DECISION_BASE_URL: ${DECISION_BASE_URL:-http://decider:8080}
+      RAG_DECOMPOSE: ${RAG_DECOMPOSE:-true}
+      RAG_AMENDMENTS: ${RAG_AMENDMENTS:-true}
+      RAG_TOP_K: ${RAG_TOP_K:-6}
+      RAG_MIN_VECTOR: ${RAG_MIN_VECTOR:-0.47}
+      RAG_MIN_BM25: ${RAG_MIN_BM25:-10}
     extra_hosts:
       # host.docker.internal на Linux (llama-server на хосте — опционально)
       - "host.docker.internal:host-gateway"
@@ -168,6 +166,7 @@ services:
 
 volumes:
   pgdata:
+  ollama:
   llama-cache:
   ml-data:
   backend-data:

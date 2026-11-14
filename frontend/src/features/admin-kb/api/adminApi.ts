@@ -40,6 +40,14 @@ export function useDeleteDocuments() {
   })
 }
 
+export function useReprocessDocument() {
+  const invalidate = useInvalidate()
+  return useMutation({
+    mutationFn: (id: string) => api.post<{ jobId: string; status: string }>(`/v1/admin/documents/${id}/reprocess`, {}),
+    onSuccess: () => invalidate(['documents'], ['admin', 'processing']),
+  })
+}
+
 // ---------- departments ----------
 
 export function useDepartments() {
