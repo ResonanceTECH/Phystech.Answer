@@ -17,11 +17,11 @@ const timeFmt = new Intl.DateTimeFormat('ru-RU', {
   minute: '2-digit',
 })
 
-export function formatDate(iso: string | Date): string {
+export function formatDate(iso: string | number | Date): string {
   return dateFmt.format(new Date(iso))
 }
 
-export function formatDateTime(iso: string | Date): string {
+export function formatDateTime(iso: string | number | Date): string {
   return dateTimeFmt.format(new Date(iso))
 }
 

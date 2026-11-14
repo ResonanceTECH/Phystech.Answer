@@ -1,4 +1,4 @@
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import {
@@ -49,7 +49,7 @@ export function DocumentsTable({
           {documents.map((doc) => (
             <TableRow key={doc.id} hover>
               <TableCell sx={{ maxWidth: 380 }}>
-                <Typography variant="body2" fontWeight={500} noWrap title={doc.title}>
+                <Typography variant="body2" noWrap title={doc.title} sx={{ fontWeight: 500 }}>
                   {doc.title}
                 </Typography>
               </TableCell>
@@ -83,7 +83,7 @@ export function DocumentsTable({
                 {onDelete && (
                   <Tooltip title="Удалить">
                     <IconButton size="small" color="error" onClick={() => onDelete(doc)} aria-label="Удалить документ">
-                      <DeleteOutlineIcon fontSize="small" />
+                      <DeleteOutlinedIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                 )}

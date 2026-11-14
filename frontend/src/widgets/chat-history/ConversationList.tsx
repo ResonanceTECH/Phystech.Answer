@@ -1,5 +1,5 @@
 import AddIcon from '@mui/icons-material/Add'
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import {
   Box,
   Button,
@@ -54,7 +54,7 @@ export function ConversationList({ activeId, onNavigate }: ConversationListProps
         </Button>
       </Box>
       <Box sx={{ px: 1.5, pb: 0.5 }}>
-        <Typography variant="caption" color="text.secondary" fontWeight={600}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
           ИСТОРИЯ ДИАЛОГОВ
         </Typography>
       </Box>
@@ -74,12 +74,14 @@ export function ConversationList({ activeId, onNavigate }: ConversationListProps
             <ListItemText
               primary={c.title}
               secondary={formatDate(new Date(c.updatedAt))}
-              primaryTypographyProps={{
-                variant: 'body2',
-                noWrap: true,
-                fontWeight: c.id === activeId ? 600 : 400,
+              slotProps={{
+                primary: {
+                  variant: 'body2',
+                  noWrap: true,
+                  sx: { fontWeight: c.id === activeId ? 600 : 400 },
+                },
+                secondary: { variant: 'caption' },
               }}
-              secondaryTypographyProps={{ variant: 'caption' }}
             />
             <Tooltip title="Удалить диалог">
               <IconButton
@@ -92,7 +94,7 @@ export function ConversationList({ activeId, onNavigate }: ConversationListProps
                   if (c.id === activeId) go(paths.app.chatNew)
                 }}
               >
-                <DeleteOutlineIcon fontSize="small" />
+                <DeleteOutlinedIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           </ListItemButton>

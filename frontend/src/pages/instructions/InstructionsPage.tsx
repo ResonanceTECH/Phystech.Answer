@@ -1,4 +1,4 @@
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import {
   Box,
   Button,
@@ -60,7 +60,7 @@ export function InstructionsPage() {
                 </Button>
                 <Tooltip title="Удалить">
                   <IconButton size="small" color="error" onClick={() => remove(ins.id)} aria-label="Удалить инструкцию">
-                    <DeleteOutlineIcon fontSize="small" />
+                    <DeleteOutlinedIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
               </CardContent>
@@ -79,7 +79,7 @@ export function InstructionsPage() {
               </Typography>
               {viewing.sources.length > 0 && (
                 <Box>
-                  <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
                     ИСТОЧНИКИ
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
@@ -91,7 +91,7 @@ export function InstructionsPage() {
                         sx={{ textDecoration: 'none', color: 'inherit' }}
                       >
                         <Card variant="outlined" sx={{ p: 1.5, '&:hover': { borderColor: 'primary.main' } }}>
-                          <Typography variant="body2" fontWeight={500}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
                             {src.documentTitle}
                             {src.sectionNumber && ` · п. ${src.sectionNumber}`}
                           </Typography>

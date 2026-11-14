@@ -49,7 +49,7 @@ export function DocumentDetailsPage() {
             }}
           >
             <Box>
-              <Typography variant="h5" component="h1" fontWeight={650}>
+              <Typography variant="h5" sx={{ fontWeight: 650 }}>
                 {doc.title}
               </Typography>
               <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 1.5, alignItems: 'center' }}>
@@ -77,7 +77,6 @@ export function DocumentDetailsPage() {
           <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
             <Typography
               variant="body2"
-              component="div"
               sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}
             >
               {doc.content}

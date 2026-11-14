@@ -11,6 +11,7 @@ export const queryKeys = {
   },
   users: {
     all: ['users'] as const,
+    list: () => ['users', 'list'] as const,
     unread: (id: string) => ['users', 'unread', id] as const,
   },
 } as const

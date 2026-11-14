@@ -6,6 +6,9 @@ import { useSendMessage } from '@/features/send-message'
 import { paths } from '@/app/router/routePaths'
 import { ChatWorkspace } from '@/widgets/chat-workspace'
 import { EmptyState } from '@/shared/ui'
+import type { ChatMessage } from '@/entities/conversation'
+
+const NO_MESSAGES: ChatMessage[] = []
 
 // Диалог с ассистентом. /app/chat/new — новый диалог (создаётся при
 // первом сообщении), /app/chat/:conversationId — существующий.
@@ -21,7 +24,7 @@ export function ChatPage() {
   const createConversation = useConversationStore((s) => s.createConversation)
   const conversations = useConversationStore((s) => s.conversations)
   const messages = useConversationStore((s) =>
-    conversationId ? (s.messages[conversationId] ?? []) : [],
+    conversationId ? (s.messages[conversationId] ?? NO_MESSAGES) : NO_MESSAGES,
   )
 
   const activeConversation = conversations.find((c) => c.id === conversationId)

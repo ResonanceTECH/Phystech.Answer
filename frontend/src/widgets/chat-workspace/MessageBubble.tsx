@@ -14,7 +14,7 @@ import type { ChatMessage } from '@/entities/conversation'
 import { useSaveInstruction } from '@/features/save-instruction'
 import { useChatUiStore } from '@/shared/lib'
 import { formatTime } from '@/shared/lib'
-import type { StatusKind } from '@/shared/ui'
+import { StatusChip, type StatusKind } from '@/shared/ui'
 
 const STATUS_LABEL: Record<string, { kind: StatusKind; label: string }> = {
   answered: { kind: 'success', label: 'Ответ подтверждён источниками' },
@@ -124,7 +124,7 @@ function AssistantBubble({
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
-          {status && <Chip size="small" variant="outlined" color={status.kind} label={status.label} />}
+          {status && <StatusChip kind={status.kind} label={status.label} />}
           {message.stub && (
             <Chip size="small" variant="outlined" color="warning" label="демо-ответ: ML недоступен" />
           )}
@@ -134,7 +134,6 @@ function AssistantBubble({
         </Box>
         <Typography
           variant="body2"
-          component="div"
           sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}
         >
           {message.text}
@@ -142,7 +141,7 @@ function AssistantBubble({
 
         {sources.length > 0 && (
           <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
-            <Typography variant="caption" color="text.secondary" fontWeight={600}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
               ИСТОЧНИКИ:
             </Typography>
             {sources.map((src, i) => (

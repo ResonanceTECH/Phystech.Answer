@@ -5,7 +5,7 @@ import {
   Button,
 } from '@mui/material'
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   useDeleteDocument,
   useDocuments,
@@ -19,6 +19,8 @@ import { DocumentsTable } from '@/widgets/documents-table/DocumentsTable'
 
 export function AdminDocumentsPage() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const query = params.get('q') ?? ''
   const documents = useDocuments()
   const deleteMutation = useDeleteDocument()
 
@@ -28,8 +30,7 @@ export function AdminDocumentsPage() {
 
   const filtered = useMemo(() => {
     const docs = documents.data ?? []
-    // Страница читает тот же параметр ?q=, что и каталог — единый поиск.
-    const q = new URLSearchParams(window.location.search).get('q')?.toLowerCase() ?? ''
+    const q = query.trim().toLowerCase()
     if (!q) return docs
     return docs.filter(
       (d) =>
@@ -37,7 +38,7 @@ export function AdminDocumentsPage() {
         d.content.toLowerCase().includes(q) ||
         d.tags.some((t) => t.toLowerCase().includes(q)),
     )
-  }, [documents.data])
+  }, [documents.data, query])
 
   const confirmDelete = () => {
     if (!deleting) return

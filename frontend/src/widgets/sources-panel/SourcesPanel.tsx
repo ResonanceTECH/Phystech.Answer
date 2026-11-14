@@ -42,7 +42,7 @@ export function SourcesPanel() {
           borderColor: 'divider',
         }}
       >
-        <Typography variant="subtitle2" fontWeight={600} noWrap>
+        <Typography variant="subtitle2" noWrap sx={{ fontWeight: 600 }}>
           Источник
         </Typography>
         <Tooltip title="Закрыть панель">
@@ -82,7 +82,7 @@ function DocumentSource({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <Box>
-        <Typography variant="h6" component="h2" sx={{ fontSize: '1.05rem', fontWeight: 600 }}>
+        <Typography variant="h6" sx={{ fontSize: '1.05rem', fontWeight: 600 }}>
           {doc.title}
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 1 }}>
@@ -96,9 +96,7 @@ function DocumentSource({
 
       {quote && (
         <Alert severity="info" variant="outlined" sx={{ whiteSpace: 'pre-wrap' }}>
-          <Typography variant="body2" component="div">
-            {quote}
-          </Typography>
+          <Typography variant="body2">{quote}</Typography>
         </Alert>
       )}
 
@@ -107,7 +105,6 @@ function DocumentSource({
       <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
         <Typography
           variant="body2"
-          component="div"
           sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.65, color: 'text.primary' }}
         >
           {doc.content}

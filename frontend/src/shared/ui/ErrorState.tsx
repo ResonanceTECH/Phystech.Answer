@@ -1,4 +1,4 @@
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined'
 import { Box, Button, Typography } from '@mui/material'
 import { apiErrorMessage } from '@/shared/api/errors'
 
@@ -26,8 +26,8 @@ export function ErrorState({
         textAlign: 'center',
       }}
     >
-      <ErrorOutlineIcon color="error" sx={{ fontSize: 48 }} />
-      <Typography variant="h6" component="div">
+      <ErrorOutlinedIcon color="error" sx={{ fontSize: 48 }} />
+      <Typography variant="h6">
         {title}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 480 }}>

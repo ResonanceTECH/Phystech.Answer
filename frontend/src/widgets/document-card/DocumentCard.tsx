@@ -34,7 +34,7 @@ export function DocumentCard({ document: doc }: DocumentCardProps) {
       >
         <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'flex-start' }}>
-            <Typography variant="subtitle1" fontWeight={600} sx={{ lineHeight: 1.35 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
               {doc.title}
             </Typography>
             {doc.read && (

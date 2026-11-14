@@ -1,5 +1,5 @@
 import { api } from '@/shared/api'
-import type { Document, DocumentInput } from './model/types'
+import type { Document, DocumentInput } from '../model/types'
 
 export function listDocuments(userId?: string): Promise<Document[]> {
   const qs = userId ? `?userId=${encodeURIComponent(userId)}` : ''

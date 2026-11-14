@@ -39,12 +39,14 @@ export function DocumentSearchField() {
       placeholder="Поиск по названию, тегам и содержимому…"
       value={value}
       onChange={(e) => setValue(e.target.value)}
-      InputProps={{
-        startAdornment: (
-          <InputAdornment position="start">
-            <SearchIcon fontSize="small" />
-          </InputAdornment>
-        ),
+      slotProps={{
+        input: {
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        },
       }}
     />
   )

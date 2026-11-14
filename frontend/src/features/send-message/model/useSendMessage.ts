@@ -1,8 +1,5 @@
 import { useState } from 'react'
-import {
-  useConversationStore,
-  type ChatMessage,
-} from '@/entities/conversation'
+import { useConversationStore } from '@/entities/conversation'
 import { deriveAnswerStatus } from '@/entities/answer'
 import { toSourceReference } from '@/entities/source-reference'
 import { apiErrorMessage } from '@/shared/api'

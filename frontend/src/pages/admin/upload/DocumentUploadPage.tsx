@@ -41,7 +41,7 @@ export function DocumentUploadPage() {
     setRows((prev) => [...prev, ...initial])
 
     for (const file of files) {
-      if (!isSupportedTextFile(file.name)) {
+      if (!isSupportedTextFile(file)) {
         updateRow(file.name, {
           status: 'unsupported',
           message: 'Формат не поддерживается — загрузите .txt или .md',
@@ -132,7 +132,7 @@ export function DocumentUploadPage() {
             <Paper key={r.name} variant="outlined" sx={{ p: 1.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="body2" noWrap fontWeight={500}>
+                  <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
                     {r.name}
                   </Typography>
                   {r.status === 'processing' && <LinearProgress sx={{ mt: 1 }} />}

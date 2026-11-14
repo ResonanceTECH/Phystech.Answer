@@ -26,7 +26,7 @@ export function ChatMessageList({ messages, conversationTitle }: ChatMessageList
           px: 3,
         }}
       >
-        <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ maxWidth: 460 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 460, textAlign: 'center' }}>
           Задайте вопрос о регламентах и административных процедурах МФТИ —
           например, как оформить командировку или открыть финансово-лицевой счёт.
         </Typography>

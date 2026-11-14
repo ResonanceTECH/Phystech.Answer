@@ -35,7 +35,7 @@ export function AppSidebar({ mobileOpen, onMobileClose }: AppSidebarProps) {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar sx={{ px: 2 }}>
         <Box>
-          <Typography variant="h6" fontWeight={700} color="primary.main">
+          <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
             {config.appName}
           </Typography>
           <Typography variant="caption" color="text.secondary">

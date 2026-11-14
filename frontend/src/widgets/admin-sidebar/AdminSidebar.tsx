@@ -41,7 +41,7 @@ export function AdminSidebar({ mobileOpen, onMobileClose }: AdminSidebarProps) {
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar sx={{ px: 2, flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
-        <Typography variant="h6" fontWeight={700} color="primary.main">
+        <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
           Администрирование
         </Typography>
         <Typography variant="caption" color="text.secondary">

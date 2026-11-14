@@ -72,7 +72,7 @@ export function ChatLayout() {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="subtitle1" fontWeight={600} noWrap sx={{ flex: 1 }}>
+          <Typography variant="subtitle1" noWrap sx={{ flex: 1, fontWeight: 600 }}>
             {activeTitle ?? 'Ассистент'}
           </Typography>
           {config.demoMode && (

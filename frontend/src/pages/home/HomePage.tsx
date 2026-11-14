@@ -80,7 +80,7 @@ export function HomePage() {
   return (
     <Box sx={{ maxWidth: 960, mx: 'auto' }}>
       <Box sx={{ textAlign: 'center', py: { xs: 4, md: 6 } }}>
-        <Typography variant="h4" component="h1" gutterBottom>
+        <Typography variant="h4" gutterBottom>
           Задайте вопрос — получите порядок действий
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 620, mx: 'auto' }}>
@@ -110,12 +110,14 @@ export function HomePage() {
           placeholder="Например: как открыть ФЛС для научного проекта?"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SendIcon fontSize="small" color="action" />
-              </InputAdornment>
-            ),
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SendIcon fontSize="small" color="action" />
+                </InputAdornment>
+              ),
+            },
           }}
         />
         <Button type="submit" variant="contained" disabled={!question.trim()}>
@@ -147,7 +149,7 @@ export function HomePage() {
                 sx={{ height: '100%', alignItems: 'flex-start' }}
               >
                 <CardContent>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                  <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
                     {cat.title}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">

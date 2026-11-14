@@ -48,7 +48,7 @@ export function AdminDashboardPage() {
           <Grid key={s.label} size={{ xs: 12, sm: 4 }}>
             <Card variant="outlined">
               <CardContent>
-                <Typography variant="h4" fontWeight={650}>
+                <Typography variant="h4" sx={{ fontWeight: 650 }}>
                   {s.value}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -77,7 +77,7 @@ export function AdminDashboardPage() {
                   to={paths.app.document(d.id)}
                   sx={{ px: 2, py: 1.5 }}
                 >
-                  <Typography variant="body2" fontWeight={500} noWrap>
+                  <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
                     {d.title}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
