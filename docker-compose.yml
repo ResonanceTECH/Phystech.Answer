@@ -9,6 +9,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fiztech_dev_hack}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    ports:
+      # проброшен для локальных утилит (cmd/ingest, psql)
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fiztech_admin -d fiztech_answer"]
       interval: 5s
@@ -22,15 +25,21 @@ services:
       PORT: 8000
       CORS_ORIGIN: "*"
       INDEX_PATH: /data/index.json
-      # Ollama на хост-машине; "off" — деградированный режим без LLM
-      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      # Инференс — llama.cpp серверы на хосте (см. ml/README и .env.example).
+      # "off" — деградированный режим без LLM.
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:8081/v1}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
-      EMBED_BASE_URL: ${EMBED_BASE_URL:-http://host.docker.internal:11434/v1}
+      LLM_MODEL: ${LLM_MODEL:-local}
+      LLM_DISABLE_THINKING: ${LLM_DISABLE_THINKING:-true}
+      EMBED_BASE_URL: ${EMBED_BASE_URL:-http://host.docker.internal:8082/v1}
       EMBED_API_KEY: ${EMBED_API_KEY:-}
-      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      EMBED_MODEL: ${EMBED_MODEL:-local}
+      RERANK_BASE_URL: ${RERANK_BASE_URL:-http://host.docker.internal:8083/v1}
+      RERANK_API_KEY: ${RERANK_API_KEY:-}
+      RERANK_MODEL: ${RERANK_MODEL:-local}
+      RERANK_ENABLED: ${RERANK_ENABLED:-true}
       RAG_TOP_K: ${RAG_TOP_K:-8}
-      RAG_MIN_SCORE: ${RAG_MIN_SCORE:-0.25}
+      RAG_MIN_SCORE: ${RAG_MIN_SCORE:-0.05}
     extra_hosts:
       # чтобы host.docker.internal работал и на Linux (на macOS/Windows он есть из коробки)
       - "host.docker.internal:host-gateway"
@@ -45,15 +54,34 @@ services:
       retries: 12
     restart: unless-stopped
 
+  # Локальный SMTP-перехватчик для писем восстановления пароля.
+  # Web-интерфейс: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    restart: unless-stopped
+
   backend:
     build: ./backend
     environment:
       PORT: 8080
-      CORS_ORIGIN: "*"
+      # Origin фронтенда (cookie-сессии не работают с '*').
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
       ML_SERVICE_URL: http://ml:8000
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       DATABASE_URL: postgresql://fiztech_admin:${POSTGRES_PASSWORD:-fiztech_dev_hack}@postgres:5432/fiztech_answer
       STORAGE_PATH: /data/files
+      # Auth / почта. Пустой SMTP_HOST отключает отправку писем.
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-Физтех.Ответ <no-reply@phystech.answer>}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-72}
+      REMEMBER_TTL_HOURS: ${REMEMBER_TTL_HOURS:-720}
+      PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-20}
+      ALLOWED_EMAIL_DOMAIN: ${ALLOWED_EMAIL_DOMAIN:-}
     volumes:
       - backend-data:/data
     ports:
