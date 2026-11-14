@@ -10,6 +10,20 @@
 внутри Docker Compose, документы никуда не передаются. Внешний LLM API можно
 подключить одной переменной, если данные открытые.
 
+## Ссылки
+
+| Что | Где |
+|---|---|
+| **Демо (деплой)** | **[http://136.234.80.202](http://136.234.80.202)** — вход: демо-кнопки «Сотрудник» / «Администратор» или `admin@example.com` / `admin123` |
+| Backend API | http://136.234.80.202/api/health → `{"status":"ok"}` (весь API идёт через nginx на `/api/*`) |
+| Фронтенд | [`frontend/`](frontend/) — React 19, TypeScript, MUI, FSD ([README](frontend/README.md)) |
+| Бэкенд | [`backend/`](backend/) — Go, PostgreSQL, OCR ([README](backend/README.md)) |
+| ML-конвейер | [`ml/`](ml/) — RAG на Go stdlib: гибридный поиск, реранкинг, проверка цитат ([README](ml/README.md)) |
+| API | [`api/openapi.yaml`](api/openapi.yaml) · каталог эндпоинтов — [`api/README.md`](api/README.md) |
+| Оценка качества | [`eval/`](eval/) — 39 размеченных вопросов и отчёты замеров |
+| Презентация | [`PRESENTATION.md`](PRESENTATION.md) |
+
+- [Ссылки](#ссылки)
 - [Быстрый старт](#быстрый-старт)
 - [Архитектура и поток данных](#архитектура-и-поток-данных)
 - [Как устроен конвейер ответа](#как-устроен-конвейер-ответа)
@@ -20,6 +34,7 @@
 - [Документация по компонентам](#документация-по-компонентам)
 - [Деплой на сервер](#деплой-на-сервер)
 - [Ограничения и план развития](#ограничения-и-план-развития)
+- [Структура репозитория](#структура-репозитория)
 
 ---
 
@@ -65,9 +80,7 @@ curl -b /tmp/cookies.txt -X POST localhost:8080/api/ask \
 `ivan.petrov@example.com`/`ivan123`, `maria.sidorova@example.com`/`maria123`,
 `expert@example.com`/`expert123`.
 
-## Данные и тома
-
-После старта:
+### После старта
 
 | Сервис | Адрес |
 |---|---|
@@ -88,8 +101,9 @@ docker compose logs -f backend ml # логи разбора документов
 docker compose stop               # остановить (данные сохраняются)
 docker compose down               # остановить и удалить контейнеры
 docker compose down -v            # + удалить данные (БД, индекс, скачанные модели)
+```
 
-## Авторизация
+### Авторизация
 
 Полный цикл аккаунта реализован и работает поверх PostgreSQL:
 
@@ -142,7 +156,8 @@ docker compose exec postgres psql -U fiztech_admin -d fiztech_answer  # psql
 ### Проверка одной командой
 
 ```bash
-curl -s localhost:8080/api/ask -H 'Content-Type: application/json' \
+# после логина из раздела «Запуск» (/api/ask требует сессии)
+curl -s -b /tmp/cookies.txt localhost:8080/api/ask -H 'Content-Type: application/json' \
   -d '{"question":"Как забронировать концертный зал?"}' | jq '.status, .summary, .steps, .sources[].title'
 ```
 
@@ -422,12 +437,15 @@ cd frontend && npm install && npm run dev                      # :5173
 
 ## Деплой на сервер
 
-Пуш в `main` запускает `.github/workflows/deploy.yml`: по SSH на сервере
-выполняются `git pull --ff-only` и `docker compose up -d --build`.
+Рабочий стенд: **http://136.234.80.202** — nginx фронтенда слушает порт 80
+и проксирует `/api/*` на backend; остальные сервисы доступны только с
+`127.0.0.1` сервера.
+
+Пуш в `main` запускает `.github/workflows/deploy.yml`: код уходит на сервер
+`rsync`'ом по SSH, там выполняется `docker compose up -d --build`.
 Секреты: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PORT`.
-В `.env` на сервере обычно задают `APP_PORT=80`; остальные порты слушают
-только `127.0.0.1`. Первый запуск скачивает модели (~6 ГБ: qwen3.5:4b,
-bge-m3 в Ollama и H2O-Lightning-4B в volume `llama-cache`).
+В `.env` на сервере задан `APP_PORT=80`. Первый запуск скачивает модели
+(~6 ГБ: qwen3.5:4b, bge-m3 в Ollama и H2O-Lightning-4B в volume `llama-cache`).
 
 ---
 
