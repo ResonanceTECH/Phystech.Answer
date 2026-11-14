@@ -587,12 +587,14 @@ func normalizeStatus(s string) string {
 }
 
 func validChunkIDs(relevant []store.ScoredChunk) map[string]string {
-	// Maps any citation alias ("1", "[1]", "chunk_x") → real chunk id.
+	// Maps any citation alias ("1", "[1]", "chunk_x", "chunk_<id>") → real chunk id.
 	m := map[string]string{}
 	for i, sc := range relevant {
 		m[sc.Chunk.ID] = sc.Chunk.ID
+		m["chunk_"+sc.Chunk.ID] = sc.Chunk.ID
 		m[fmt.Sprintf("%d", i+1)] = sc.Chunk.ID
 		m[fmt.Sprintf("[%d]", i+1)] = sc.Chunk.ID
+		m[fmt.Sprintf("chunk_%d", i+1)] = sc.Chunk.ID
 	}
 	return m
 }

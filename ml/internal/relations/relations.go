@@ -16,12 +16,16 @@ import (
 )
 
 var (
-	repealRe = regexp.MustCompile(`(?i)считать\s+утративш\w*\s+силу[^.\n]{0,200}?приказ\w*[^№]{0,40}№\s*([\d\-/]+)\s+от\s+(\d{2})\.(\d{2})\.(\d{4})`)
-	// «приказ ректора МФТИ № 76-1 от 12.02.2015» without "считать утратившим"
-	amendRe      = regexp.MustCompile(`(?i)(?:изложить|изменить|дополнить)[^.\n]{0,120}?(?:приказ\w*|пункт\w*)[^№]{0,40}№\s*([\d\-/]+)\s+от\s+(\d{2})\.(\d{2})\.(\d{4})`)
+	// Trigger phrases; number/date are extracted separately because both
+	// «приказ № N от DD.MM.YYYY» and «приказ от DD.MM.YYYY № N» occur.
+	repealTrig   = regexp.MustCompile(`(?i)считать\s+утративш\w*\s+силу[^.\n]{0,200}?приказ\w*`)
+	amendTrig    = regexp.MustCompile(`(?i)(?:изложить|изменить|дополнить)\s+в\s+новой\s+редакции[^.\n]{0,160}?приказ\w*|внести\s+изменени\w*[^.\n]{0,160}?приказ\w*`)
 	approveRe    = regexp.MustCompile(`(?i)утвердить[^.\n]{0,120}?(?:приложени\w*|регламент\w*|порядок\w*)`)
-	genericRefRe = regexp.MustCompile(`(?i)(?:в\s+соответствии\s+с|на\s+основании|в\s+порядке)[^.\n]{0,80}?(?:приказ\w*|распоряжени\w*)[^№]{0,40}№\s*([\d\-/]+)\s+от\s+(\d{2})\.(\d{2})\.(\d{4})`)
-	docNumRe     = regexp.MustCompile(`(?i)(?:приказ\w*|распоряжени\w*)\s+(?:ректора\s+МФТИ\s+)?№\s*([\d\-/]+)`)
+	genericTrig  = regexp.MustCompile(`(?i)(?:в\s+соответствии\s+с|на\s+основании|в\s+порядке)[^.\n]{0,80}?приказ\w*`)
+	numRe        = regexp.MustCompile(`№\s*([0-9][0-9\-/]*[0-9А-Яа-я]?)`)
+	dateRe       = regexp.MustCompile(`(\d{2})\.(\d{2})\.(\d{4})`)
+	docNumRe     = regexp.MustCompile(`(?i)(?:приказ\w*|распоряжени\w*)\s+(?:ректора\s+МФТИ\s+)?(?:от\s+\d{2}\.\d{2}\.\d{4}\s+)?№\s*([\d\-/]+)`)
+	trigLookback = 200 // chars after the trigger to scan for «№ N» + date
 )
 
 // Extract scans doc content for relation patterns. evidence holds the raw
@@ -49,20 +53,43 @@ func Extract(doc model.Document) []model.Relation {
 	}
 
 	for _, para := range paragraphs(doc.Content) {
-		for _, m := range repealRe.FindAllStringSubmatch(para, -1) {
-			add("repeals", m[1], normDate(m[2], m[3], m[4]), para)
+		for _, loc := range repealTrig.FindAllStringIndex(para, -1) {
+			num, date := scanNumDate(para, loc[1])
+			add("repeals", num, date, para)
 		}
-		for _, m := range amendRe.FindAllStringSubmatch(para, -1) {
-			add("amends", m[1], normDate(m[2], m[3], m[4]), para)
+		for _, loc := range amendTrig.FindAllStringIndex(para, -1) {
+			num, date := scanNumDate(para, loc[1])
+			add("amends", num, date, para)
 		}
-		for _, m := range genericRefRe.FindAllStringSubmatch(para, -1) {
-			add("references", m[1], normDate(m[2], m[3], m[4]), para)
+		for _, loc := range genericTrig.FindAllStringIndex(para, -1) {
+			num, date := scanNumDate(para, loc[1])
+			if num == "" {
+				continue // «на основании приказов» без номера — шум
+			}
+			add("references", num, date, para)
 		}
 		if approveRe.MatchString(para) && strings.Contains(strings.ToLower(para), "утвердить") {
 			add("approves", "", "", para)
 		}
 	}
 	return out
+}
+
+// scanNumDate looks for «№ N» and «DD.MM.YYYY» in the window following the
+// trigger phrase, in either order.
+func scanNumDate(para string, from int) (num, date string) {
+	end := from + trigLookback
+	if end > len(para) {
+		end = len(para)
+	}
+	window := para[from:end]
+	if m := numRe.FindStringSubmatch(window); m != nil {
+		num = m[1]
+	}
+	if m := dateRe.FindStringSubmatch(window); m != nil {
+		date = normDate(m[1], m[2], m[3])
+	}
+	return num, date
 }
 
 func paragraphs(content string) []string {
