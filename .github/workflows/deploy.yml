@@ -29,18 +29,31 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Deploy to Selectel server
+      - uses: actions/checkout@v4
         if: steps.secrets.outputs.ready == 'true'
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          # первый запуск качает модели (~6 ГБ) — ждём дольше 10 мин по умолчанию
-          command_timeout: 90m
-          script: |
-            set -e
-            cd /home/deploy/phystech-answer
-            git pull --ff-only
-            docker compose up -d --build
+
+      - name: Sync code to server and rebuild
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${DEPLOY_PORT:-22}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+          # Deploy keys отключены политикой организации — код идёт push'ем
+          # по SSH, серверу доступ к GitHub не нужен.
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p ${DEPLOY_PORT:-22}" \
+            --exclude .git --exclude .env --exclude .DS_Store \
+            --exclude node_modules --exclude dist \
+            --exclude ml/models --exclude ml/data --exclude ml/benchmarks \
+            --exclude backend/storage --exclude backend/bin \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:/home/deploy/phystech-answer/"
+
+          ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" \
+            'cd /home/deploy/phystech-answer && docker compose up -d --build'
