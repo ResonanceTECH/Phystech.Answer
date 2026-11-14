@@ -81,11 +81,18 @@ export function HomePage() {
 
   return (
     <Box sx={{ maxWidth: 960, mx: 'auto' }}>
-      <Box sx={{ textAlign: 'center', py: { xs: 4, md: 6 } }}>
-        <Typography variant="h4" gutterBottom>
+      <Box sx={{ textAlign: 'center', py: { xs: 5, md: 8 } }}>
+        <Typography
+          variant="h4"
+          gutterBottom
+          sx={{
+            fontSize: { xs: '1.5rem', md: '2.2rem' },
+            '& em': { fontStyle: 'normal', color: 'primary.light' },
+          }}
+        >
           {user?.firstName
-            ? `${user.firstName}, задайте вопрос — получите порядок действий`
-            : 'Задайте вопрос — получите порядок действий'}
+            ? <>{user.firstName}, задайте вопрос — получите <em>порядок действий</em></>
+            : <>Задайте вопрос — получите <em>порядок действий</em></>}
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 620, mx: 'auto' }}>
           Ассистент найдёт нужные регламенты МФТИ, соберёт инструкцию
@@ -98,33 +105,47 @@ export function HomePage() {
         onSubmit={onSubmit}
         elevation={0}
         sx={{
-          p: 1.5,
+          p: 1,
           display: 'flex',
           gap: 1,
           alignItems: 'center',
+          bgcolor: 'rgba(21, 16, 36, 0.9)',
           border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 3,
+          borderColor: 'rgba(167, 139, 250, 0.32)',
+          borderRadius: 999,
+          transition: 'border-color 0.25s ease, box-shadow 0.25s ease',
+          '&:focus-within': {
+            borderColor: 'primary.main',
+            boxShadow: '0 14px 40px rgba(124, 58, 237, 0.32)',
+          },
           mb: 3,
         }}
       >
         <TextField
           fullWidth
           size="small"
+          variant="standard"
           placeholder="Например: как открыть ФЛС для научного проекта?"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           slotProps={{
             input: {
+              disableUnderline: true,
+              sx: { px: 2, py: 1, fontSize: '1rem' },
               startAdornment: (
                 <InputAdornment position="start">
-                  <SendIcon fontSize="small" color="action" />
+                  <SendIcon fontSize="small" sx={{ color: 'primary.light' }} />
                 </InputAdornment>
               ),
             },
           }}
         />
-        <Button type="submit" variant="contained" disabled={!question.trim()}>
+        <Button
+          type="submit"
+          variant="contained"
+          disabled={!question.trim()}
+          sx={{ minWidth: 110, minHeight: 44 }}
+        >
           Спросить
         </Button>
       </Paper>
@@ -141,13 +162,22 @@ export function HomePage() {
         ))}
       </Box>
 
-      <Typography variant="h6" sx={{ mb: 2 }}>
+      <Typography variant="h6" sx={{ mb: 2.5, fontSize: '0.95rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         Категории процедур
       </Typography>
       <Grid container spacing={2} sx={{ mb: 6 }}>
         {CATEGORIES.map((cat) => (
           <Grid key={cat.title} size={{ xs: 12, sm: 6, md: 4 }}>
-            <Card variant="outlined" sx={{ height: '100%' }}>
+            <Card
+              variant="outlined"
+              sx={{
+                height: '100%',
+                '&:hover': {
+                  borderColor: 'primary.light',
+                  boxShadow: '0 10px 34px rgba(4, 2, 14, 0.5)',
+                },
+              }}
+            >
               <CardActionArea
                 onClick={() => ask(cat.question)}
                 sx={{ height: '100%', alignItems: 'flex-start' }}
@@ -168,7 +198,7 @@ export function HomePage() {
 
       {recent.length > 0 && (
         <>
-          <Typography variant="h6" sx={{ mb: 2 }}>
+          <Typography variant="h6" sx={{ mb: 2.5, fontSize: '0.95rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Последние диалоги
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>

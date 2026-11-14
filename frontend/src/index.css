@@ -5,14 +5,31 @@ body {
 }
 
 body {
-  background-color: #f6f7f9;
-  color: #1f2430;
-  font-family:
-    'Inter', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #0a0713;
+  color: #f5f3fc;
+  font-family: 'Onest', 'Inter', system-ui, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
   min-height: 100svh;
+}
+
+::selection {
+  background: rgba(139, 92, 246, 0.45);
+  color: #ffffff;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2a1656;
+  border-radius: 999px;
+  border: 2px solid #0a0713;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
