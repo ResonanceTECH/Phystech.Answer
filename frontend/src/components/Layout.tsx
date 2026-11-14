@@ -6,16 +6,25 @@ export function Layout() {
       <header className="border-b border-neutral-200 bg-white">
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4">
           <NavLink to="/" className="text-base font-semibold tracking-tight">
-            Phystech.Answer
+            Физтех.Ответ
           </NavLink>
           <nav className="flex items-center gap-4 text-sm text-neutral-600">
             <NavLink
               to="/"
+              end
               className={({ isActive }) =>
                 isActive ? 'text-neutral-900' : 'hover:text-neutral-900'
               }
             >
-              Главная
+              Ассистент
+            </NavLink>
+            <NavLink
+              to="/documents"
+              className={({ isActive }) =>
+                isActive ? 'text-neutral-900' : 'hover:text-neutral-900'
+              }
+            >
+              Документы
             </NavLink>
           </nav>
         </div>
