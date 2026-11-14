@@ -12,6 +12,7 @@ import {
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import { paths } from '@/app/router/routePaths'
 import { isAdminRole, useAuthStore } from '@/entities/user'
+import { NotificationsBell } from '@/features/notifications'
 import { useAppUiStore } from '@/shared/lib'
 import { config } from '@/shared/config/env'
 
@@ -68,6 +69,7 @@ export function AppHeader({ title }: AppHeaderProps) {
         )}
         {user ? (
           <>
+            <NotificationsBell />
             {isAdminRole(user.role) ? (
               <Chip
                 size="small"

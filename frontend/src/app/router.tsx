@@ -6,6 +6,7 @@ import { PublicOnly, RequireAuth, RequireOnboarding } from '@/app/router/guards'
 import { paths } from '@/app/router/routePaths'
 import { AdminDashboardPage } from '@/pages/admin/dashboard/AdminDashboardPage'
 import { AdminDocumentsPage } from '@/pages/admin/documents/AdminDocumentsPage'
+import { AdminParticipantsPage } from '@/pages/admin/participants/AdminParticipantsPage'
 import { AdminStubPage } from '@/pages/admin/stub/AdminStubPage'
 import { DocumentUploadPage } from '@/pages/admin/upload/DocumentUploadPage'
 import { ForgotPasswordPage } from '@/pages/auth/forgot-password/ForgotPasswordPage'
@@ -80,6 +81,7 @@ export const router = createBrowserRouter([
           { index: true, element: <AdminDashboardPage /> },
           { path: 'documents', element: <AdminDocumentsPage /> },
           { path: 'documents/upload', element: <DocumentUploadPage /> },
+          { path: 'participants', element: <AdminParticipantsPage /> },
           // Загрузка показывает живой статус разбора каждого файла.
           { path: 'processing', element: <DocumentUploadPage /> },
           {

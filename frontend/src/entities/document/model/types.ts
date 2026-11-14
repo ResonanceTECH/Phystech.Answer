@@ -14,6 +14,9 @@ export interface Document {
   documentType?: string
   documentDate?: string
   processingStatus?: string
+  /** Тематическая папка */
+  category?: string
+  visibility?: 'active' | 'hidden' | 'archived'
 }
 
 export interface DocumentInput {

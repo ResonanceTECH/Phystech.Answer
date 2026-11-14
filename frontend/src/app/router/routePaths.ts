@@ -25,6 +25,7 @@ export const paths = {
     dashboard: '/admin',
     documents: '/admin/documents',
     upload: '/admin/documents/upload',
+    participants: '/admin/participants',
     processing: '/admin/processing',
     versions: '/admin/versions',
     conflicts: '/admin/conflicts',
