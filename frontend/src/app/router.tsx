@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter } from 'react-router-dom'
 import { AdminLayout } from '@/app/layouts/AdminLayout'
 import { AppLayout } from '@/app/layouts/AppLayout'
 import { ChatLayout } from '@/app/layouts/ChatLayout'
@@ -12,6 +12,7 @@ import { DocumentDetailsPage } from '@/pages/document-details/DocumentDetailsPag
 import { DocumentsPage } from '@/pages/documents/DocumentsPage'
 import { HomePage } from '@/pages/home/HomePage'
 import { InstructionsPage } from '@/pages/instructions/InstructionsPage'
+import { LandingPage } from '@/pages/landing/LandingPage'
 import { NotFoundPage } from '@/pages/not-found/NotFoundPage'
 
 export const router = createBrowserRouter([
@@ -80,5 +81,5 @@ export const router = createBrowserRouter([
       },
     ],
   },
-  { path: paths.home, element: <Navigate to={paths.app.root} replace /> },
+  { path: paths.home, element: <LandingPage /> },
 ])
