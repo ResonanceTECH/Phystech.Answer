@@ -21,6 +21,8 @@ type Document struct {
 	Processing     string    `json:"processingStatus,omitempty"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
+	// SourceFileID links the initial version to an uploaded file (input-only).
+	SourceFileID   string    `json:"-"`
 }
 
 type User struct {

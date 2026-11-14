@@ -135,6 +135,7 @@ func (s *Server) processUpload(r *http.Request, user model.User, filename string
 		DocumentType:   docType,
 		Category:       category,
 		Tags:           tags,
+		SourceFileID:   fileRec.ID,
 	})
 	if err != nil {
 		res.Status = "rejected"

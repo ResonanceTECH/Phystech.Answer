@@ -3,6 +3,7 @@ package parse
 import (
 	"bytes"
 	"compress/flate"
+	"compress/zlib"
 	"io"
 	"regexp"
 	"strings"
@@ -32,13 +33,9 @@ func pdfStreams(data []byte) [][]byte {
 	var out [][]byte
 	for _, m := range streamRe.FindAllSubmatch(data, -1) {
 		raw := m[1]
-		if r := flate.NewReader(bytes.NewReader(raw)); r != nil {
-			if dec, err := io.ReadAll(r); err == nil && len(dec) > 0 {
-				out = append(out, dec)
-				r.Close()
-				continue
-			}
-			r.Close()
+		if decoded := inflate(raw); len(decoded) > 0 {
+			out = append(out, decoded)
+			continue
 		}
 		// Some PDFs store uncompressed text streams.
 		if bytes.Contains(raw, []byte("Tj")) || bytes.Contains(raw, []byte("TJ")) {
@@ -46,6 +43,25 @@ func pdfStreams(data []byte) [][]byte {
 		}
 	}
 	return out
+}
+
+// inflate tries zlib (PDF FlateDecode) first, then raw DEFLATE.
+func inflate(raw []byte) []byte {
+	if r, err := zlib.NewReader(bytes.NewReader(raw)); err == nil {
+		if dec, err := io.ReadAll(r); err == nil && len(dec) > 0 {
+			r.Close()
+			return dec
+		}
+		r.Close()
+	}
+	if r := flate.NewReader(bytes.NewReader(raw)); r != nil {
+		if dec, err := io.ReadAll(r); err == nil && len(dec) > 0 {
+			r.Close()
+			return dec
+		}
+		r.Close()
+	}
+	return nil
 }
 
 var (

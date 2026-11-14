@@ -125,7 +125,8 @@ func (p *Postgres) CreateDocument(ctx context.Context, doc model.Document) (mode
 	}
 
 	v, err := p.insertVersionTx(ctx, tx, model.DocumentVersion{
-		DocumentID: doc.ID, VersionNumber: 1, Content: doc.Content,
+		DocumentID: doc.ID, SourceFileID: doc.SourceFileID,
+		VersionNumber: 1, Content: doc.Content,
 		ProcessingStatus: "published", LegalStatus: "in_force", ReviewStatus: "approved",
 	})
 	if err != nil {
