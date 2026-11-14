@@ -54,7 +54,7 @@ export function ChatPage() {
         if (local && local.length > 0) return
         setMessages(
           conversationId,
-          serverMsgs.map((m) => ({
+          (serverMsgs ?? []).map((m) => ({
             id: m.id,
             conversationId: m.conversationId,
             role: m.role,

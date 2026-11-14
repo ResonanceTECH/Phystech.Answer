@@ -7,6 +7,7 @@ import { paths } from '@/app/router/routePaths'
 import { AdminDashboardPage } from '@/pages/admin/dashboard/AdminDashboardPage'
 import { AdminDocumentsPage } from '@/pages/admin/documents/AdminDocumentsPage'
 import { AdminParticipantsPage } from '@/pages/admin/participants/AdminParticipantsPage'
+import { AdminProcessingPage } from '@/pages/admin/processing/AdminProcessingPage'
 import { AdminStubPage } from '@/pages/admin/stub/AdminStubPage'
 import { DocumentUploadPage } from '@/pages/admin/upload/DocumentUploadPage'
 import { ForgotPasswordPage } from '@/pages/auth/forgot-password/ForgotPasswordPage'
@@ -82,8 +83,10 @@ export const router = createBrowserRouter([
           { path: 'documents', element: <AdminDocumentsPage /> },
           { path: 'documents/upload', element: <DocumentUploadPage /> },
           { path: 'participants', element: <AdminParticipantsPage /> },
-          // Загрузка показывает живой статус разбора каждого файла.
-          { path: 'processing', element: <DocumentUploadPage /> },
+          {
+            path: 'processing',
+            element: <AdminProcessingPage />,
+          },
           {
             path: 'versions',
             element: (

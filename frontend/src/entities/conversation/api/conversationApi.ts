@@ -132,8 +132,10 @@ export function toAnswerFields(ans: ServerAnswer): {
   return { summary: ans.summary, steps, conflicts, notes, missing: missing || undefined }
 }
 
+const orEmpty = <T>(p: Promise<T[]>): Promise<T[]> => p.then((r) => r ?? []);
+
 export const conversationApi = {
-  list: () => api.get<ServerConversation[]>('/conversations'),
+  list: () => orEmpty(api.get<ServerConversation[]>('/conversations')),
 
   create: (input: { title?: string; message?: string }) =>
     api.post<
@@ -165,14 +167,14 @@ export const conversationApi = {
 };
 
 export const savedInstructionApi = {
-  list: () => api.get<ServerSavedInstruction[]>('/saved-instructions'),
+  list: () => orEmpty(api.get<ServerSavedInstruction[]>('/saved-instructions')),
   create: (answerId: string, title: string) =>
     api.post<ServerSavedInstruction>('/saved-instructions', { answerId, title }),
   remove: (id: string) => api.delete<void>(`/saved-instructions/${id}`),
 };
 
 export const actionRouteApi = {
-  list: () => api.get<ServerActionRoute[]>('/action-routes'),
+  list: () => orEmpty(api.get<ServerActionRoute[]>('/action-routes')),
   create: (answerId: string, title: string) =>
     api.post<ServerActionRoute>('/action-routes', { answerId, title }),
   get: (id: string) =>

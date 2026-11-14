@@ -45,6 +45,28 @@ docker compose up -d --build  # первый запуск: 10–20 минут (�
 `.env` не обязателен: все параметры имеют значения по умолчанию
 (переопределения — в `.env.example`).
 
+Проверка и примеры запросов:
+
+```bash
+curl localhost:8080/api/health     # {"status":"ok"}
+curl localhost:8080/health/ready   # readiness (проверяет БД)
+curl localhost:8000/health         # {"status":"ok","documents":N,"chunks":M}
+
+# /api/ask требует сессионной авторизации — сначала логин:
+curl -c /tmp/cookies.txt -X POST localhost:8080/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"admin123"}'
+curl -b /tmp/cookies.txt -X POST localhost:8080/api/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Как открыть финансово-лицевой счёт?"}'
+```
+
+Демо-аккаунты (сид): `admin@example.com`/`admin123` (admin),
+`ivan.petrov@example.com`/`ivan123`, `maria.sidorova@example.com`/`maria123`,
+`expert@example.com`/`expert123`.
+
+## Данные и тома
+
 После старта:
 
 | Сервис | Адрес |
