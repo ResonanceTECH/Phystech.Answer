@@ -8,6 +8,8 @@ interface ChatUiState {
   selectedQuote: string | null
   openSources: (documentId: string, quote?: string) => void
   closeSources: () => void
+  toggleSources: () => void
+  setSourcesOpen: (open: boolean) => void
 }
 
 export const useChatUiStore = create<ChatUiState>()((set) => ({
@@ -18,6 +20,8 @@ export const useChatUiStore = create<ChatUiState>()((set) => ({
     set({ sourcesOpen: true, selectedDocumentId: documentId, selectedQuote: quote ?? null }),
   closeSources: () =>
     set({ sourcesOpen: false, selectedDocumentId: null, selectedQuote: null }),
+  toggleSources: () => set((s) => ({ sourcesOpen: !s.sourcesOpen })),
+  setSourcesOpen: (open) => set({ sourcesOpen: open }),
 }))
 
 // Глобальное UI-состояние: мобильная навигация.
