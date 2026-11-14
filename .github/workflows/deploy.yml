@@ -16,6 +16,8 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
+          # первый запуск качает модели (~6 ГБ) — ждём дольше 10 мин по умолчанию
+          command_timeout: 90m
           script: |
             set -e
             cd /home/deploy/phystech-answer
