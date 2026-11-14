@@ -11,8 +11,8 @@ export const landingNav = [
 export const landingHero = {
   brand: 'Физтех.Ответ',
   brandTagline: 'навигатор по регламентам',
-  lines: ['Порядок', 'действий по', 'любому регламенту'] as const,
-  accentLine: 2,
+  lines: ['Порядок', 'действий', 'по любому', 'регламенту'] as const,
+  accentFrom: 2,
   subtitle:
     'Задайте вопрос обычным языком — ассистент найдёт нужные регламенты МФТИ, соберёт пошаговую инструкцию и покажет источники.',
   primaryCta: { label: 'Открыть ассистента', to: '/app' },

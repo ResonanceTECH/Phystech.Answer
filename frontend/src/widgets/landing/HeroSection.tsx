@@ -24,12 +24,12 @@ export function HeroSection() {
               {landingHero.lines.map((line, index) => (
                 <span key={line} className="pl-hero__line">
                   {reduceMotion ? (
-                    <span className={index === landingHero.accentLine ? 'pl-accent' : undefined}>
+                    <span className={index >= landingHero.accentFrom ? 'pl-accent' : undefined}>
                       {line}
                     </span>
                   ) : (
                     <motion.span
-                      className={index === landingHero.accentLine ? 'pl-accent' : undefined}
+                      className={index >= landingHero.accentFrom ? 'pl-accent' : undefined}
                       initial={{ y: '0.45em', opacity: 0 }}
                       animate={{ y: '0%', opacity: 1 }}
                       transition={{
