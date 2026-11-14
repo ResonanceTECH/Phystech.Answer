@@ -22,9 +22,13 @@ func main() {
 		st.SeedDemo()
 	}
 
-	srv := &http.Server{
+	srv := httpapi.New(st, cfg)
+	// Push the document set to the ML index so /api/ask has content to search.
+	srv.SyncDocuments(context.Background())
+
+	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.New(st, cfg).Handler(),
+		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -35,13 +39,13 @@ func main() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
+		if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("graceful shutdown failed: %v", err)
 		}
 	}()
 
 	log.Printf("listening on %s", cfg.Addr)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("server error: %v", err)
 	}
 }
