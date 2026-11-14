@@ -47,11 +47,15 @@ jobs:
 
           # Deploy keys отключены политикой организации — код идёт push'ем
           # по SSH, серверу доступ к GitHub не нужен.
+          # ml/data/documents — база знаний кейса: backend импортирует её
+          # при старте (volume ./ml/data/documents:/docs). Остальное в ml/data
+          # (кэши OCR и разбора) на сервер не нужно.
           rsync -az --delete \
             -e "ssh -i ~/.ssh/deploy_key -p ${DEPLOY_PORT:-22}" \
             --exclude .git --exclude .env --exclude .DS_Store \
             --exclude node_modules --exclude dist \
-            --exclude ml/models --exclude ml/data --exclude ml/benchmarks \
+            --include /ml/data/documents/ --exclude '/ml/data/*' \
+            --exclude ml/models --exclude ml/benchmarks \
             --exclude backend/storage --exclude backend/bin \
             ./ "$DEPLOY_USER@$DEPLOY_HOST:/home/deploy/phystech-answer/"
 
