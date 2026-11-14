@@ -11,7 +11,7 @@ import {
   Typography,
 } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
-import { useConversationStore } from '@/entities/conversation'
+import { conversationApi, useConversationStore } from '@/entities/conversation'
 import { paths } from '@/app/router/routePaths'
 import { formatDate } from '@/shared/lib'
 
@@ -90,6 +90,7 @@ export function ConversationList({ activeId, onNavigate }: ConversationListProps
                 aria-label="Удалить диалог"
                 onClick={(e) => {
                   e.stopPropagation()
+                  void conversationApi.remove(c.id).catch(() => {})
                   deleteConversation(c.id)
                   if (c.id === activeId) go(paths.app.chatNew)
                 }}

@@ -11,10 +11,10 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTheme } from '@mui/material/styles'
 import { Link as RouterLink, Outlet, useParams } from 'react-router-dom'
-import { useConversationStore } from '@/entities/conversation'
+import { conversationApi, useConversationStore } from '@/entities/conversation'
 import { paths } from '@/app/router/routePaths'
 import { config } from '@/shared/config/env'
 import { useChatUiStore } from '@/shared/lib'
@@ -36,7 +36,32 @@ export function ChatLayout() {
   const [historyOpen, setHistoryOpen] = useState(false)
 
   const conversations = useConversationStore((s) => s.conversations)
+  const setConversations = useConversationStore((s) => s.setConversations)
   const activeTitle = conversations.find((c) => c.id === conversationId)?.title
+
+  // Сервер — источник истины для списка диалогов.
+  useEffect(() => {
+    let cancelled = false
+    conversationApi
+      .list()
+      .then((list) => {
+        if (cancelled) return
+        setConversations(
+          list.map((c) => ({
+            id: c.id,
+            title: c.title,
+            createdAt: Date.parse(c.createdAt),
+            updatedAt: Date.parse(c.updatedAt),
+          })),
+        )
+      })
+      .catch(() => {
+        // Сеть/сессия — остаётся локальный кэш.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [setConversations])
 
   return (
     <Box sx={{ display: 'flex', height: '100svh', overflow: 'hidden' }}>
