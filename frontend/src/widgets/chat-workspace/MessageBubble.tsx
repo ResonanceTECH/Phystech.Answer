@@ -13,6 +13,7 @@ import {
   Typography,
 } from '@mui/material'
 import { useState } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
 import type { AnswerTrace } from '@/entities/answer'
 import type { ChatMessage } from '@/entities/conversation'
 import { formatDocDate, type SourceReference } from '@/entities/source-reference'
@@ -306,6 +307,12 @@ function StructuredAnswer({ message, onRef }: { message: ChatMessage; onRef: (re
   )
 }
 
+// Ссылка в просмотрщик с подсветкой номера пункта («2.5» из «2.5–2.7»).
+function sourceLink(src: SourceReference) {
+  const num = src.sectionNumber?.match(/\d+(?:\.\d+)*/)?.[0]
+  return `/app/documents/${src.documentId}${num ? `?q=${encodeURIComponent(num)}` : ''}`
+}
+
 function SourceCard({ src, onOpen }: { src: SourceReference; onOpen: () => void }) {
   const requisites = [
     src.documentNumber && !src.documentTitle.includes(src.documentNumber) ? `№ ${src.documentNumber}` : '',
@@ -350,6 +357,15 @@ function SourceCard({ src, onOpen }: { src: SourceReference; onOpen: () => void 
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {[src.sectionNumber ? `п. ${src.sectionNumber}` : '', src.heading ?? ''].filter(Boolean).join(' · ')}
+          </Typography>
+          <Typography
+            component={RouterLink}
+            to={sourceLink(src)}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            variant="caption"
+            sx={{ color: 'primary.main', fontWeight: 600 }}
+          >
+            Открыть в документе →
           </Typography>
         </Box>
       </Box>

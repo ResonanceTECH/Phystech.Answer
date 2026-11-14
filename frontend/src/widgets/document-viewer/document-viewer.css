@@ -1,0 +1,64 @@
+/* Подсветка совпадений во всех режимах просмотра */
+mark.doc-hl {
+  background: #fde68a;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.25);
+}
+mark.doc-hl--current {
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.55);
+}
+
+/* Текстовый слой pdf.js: подсветка поверх прозрачного текста */
+.react-pdf__Page__textContent mark.doc-hl {
+  color: transparent;
+  background: rgba(250, 204, 21, 0.45);
+  box-shadow: none;
+  padding: 0;
+}
+.react-pdf__Page__textContent mark.doc-hl--current {
+  background: rgba(245, 158, 11, 0.7);
+}
+
+/* docx-preview: страница по центру на сером фоне, как в Word */
+.doc-dom .docx-wrapper {
+  background: transparent;
+  padding: 24px 12px;
+}
+.doc-dom .docx-wrapper > section.docx {
+  box-shadow: 0 4px 18px rgba(20, 10, 40, 0.18);
+  margin-bottom: 24px;
+}
+
+/* SheetJS: таблица как в Excel */
+.doc-dom .xlsx-sheet {
+  background: #fff;
+  margin: 16px;
+  overflow: auto;
+  box-shadow: 0 4px 18px rgba(20, 10, 40, 0.12);
+}
+.doc-dom .xlsx-sheet table {
+  border-collapse: collapse;
+  font: 13px/1.35 'Calibri', 'Segoe UI', system-ui, sans-serif;
+  color: #1f2937;
+}
+.doc-dom .xlsx-sheet td {
+  border: 1px solid #d6d3e0;
+  padding: 4px 8px;
+  vertical-align: top;
+  white-space: pre-wrap;
+  max-width: 420px;
+}
+.doc-dom .xlsx-sheet tr:first-child td {
+  background: #f3f0fb;
+  font-weight: 600;
+}
+
+/* Распознанный текст: читаемая типографика документа */
+.doc-text {
+  font: 15px/1.75 'PT Serif', 'Times New Roman', Georgia, serif;
+  white-space: pre-wrap;
+  color: #1f1a2e;
+}

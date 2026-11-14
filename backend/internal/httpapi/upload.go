@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -400,6 +401,8 @@ func (s *Server) serveSourceFile(w http.ResponseWriter, r *http.Request, fileID 
 	}
 	defer rc.Close()
 	w.Header().Set("Content-Type", orDefault(f.MimeType, "application/octet-stream"))
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename*=UTF-8''%s", f.OriginalFilename))
+	// RFC 6266/5987: non-ASCII filename must be percent-encoded.
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename*=UTF-8''%s", url.PathEscape(f.OriginalFilename)))
+	w.Header().Set("Cache-Control", "private, max-age=300")
 	io.Copy(w, rc)
 }
