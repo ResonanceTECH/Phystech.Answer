@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -1049,16 +1051,36 @@ func (p *Postgres) SearchChunks(ctx context.Context, query string, docIDs, categ
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	q := `SELECT c.id, c.version_id, d.id, d.title,
+	terms := strings.Fields(query)
+	// Термы попадают в to_tsquery — выкидываем всё, что может сломать синтаксис.
+	clean := terms[:0]
+	for _, t := range terms {
+		t = termSanitizer.ReplaceAllString(t, "")
+		if len(t) > 0 {
+			clean = append(clean, t)
+		}
+	}
+	terms = clean
+	if len(terms) == 0 {
+		return nil, nil
+	}
+	// OR-соединение термов: plainto_tsquery даёт AND-семантику, которая для
+	// русской морфологии слишком строга (разные словоформы — разные лексемы).
+	// to_tsquery по 'a | b' стеммит каждый терм и даёт forgiving recall.
+	q := `WITH q AS (
+		SELECT to_tsquery('russian', string_agg(lower(t), ' | ')) AS tsq
+		FROM unnest($1::text[]) t
+	)
+	SELECT c.id, c.version_id, d.id, d.title,
 		COALESCE(s.section_number,''), c.content, v.legal_status,
-		ts_rank(to_tsvector('russian', c.content), plainto_tsquery('russian', $1)) AS rank
-		FROM document_chunks c
+		ts_rank(to_tsvector('russian', lower(c.content)), q.tsq) AS rank
+		FROM document_chunks c, q
 		JOIN document_versions v ON v.id = c.version_id
 		JOIN documents d ON d.id = v.document_id
 		LEFT JOIN document_sections s ON s.id = c.section_id
 		WHERE v.processing_status = 'published'
-		  AND to_tsvector('russian', c.content) @@ plainto_tsquery('russian', $1)`
-	args := []any{query}
+		  AND to_tsvector('russian', lower(c.content)) @@ q.tsq`
+	args := []any{terms}
 	n := 2
 	if len(docIDs) > 0 {
 		q += ` AND d.id = ANY($` + itoa(n) + `)`
@@ -1087,6 +1109,8 @@ func (p *Postgres) SearchChunks(ctx context.Context, query string, docIDs, categ
 	}
 	return out, rows.Err()
 }
+
+var termSanitizer = regexp.MustCompile(`[^\p{L}\p{N}_-]+`)
 
 // ---------- audit ----------
 
