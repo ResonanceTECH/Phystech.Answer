@@ -44,7 +44,7 @@ export function DocumentViewer({ documentId, content, query }: Props) {
     setLoadError('')
     fetch(`${config.apiBaseUrl}/v1/documents/${documentId}/file`, { credentials: 'include' })
       .then(async (r) => {
-        if (!r.ok) throw new Error(r.status === 404 ? 'Исходный файл недоступен' : `Ошибка ${r.status}`)
+        if (!r.ok) throw new Error(r.status === 404 ? 'Для этого документа нет исходного файла' : `Ошибка ${r.status}`)
         const b = await r.blob()
         if (!alive) return
         setBlob(b)
@@ -331,9 +331,13 @@ function TextView({ content, query }: { content: string; query: string }) {
   }, [content, query])
 
   return (
-    <Box ref={box} sx={{ maxHeight: '78vh', overflow: 'auto' }}>
+    <Box ref={box} sx={{ bgcolor: '#e9e7ef', maxHeight: '78vh', overflow: 'auto' }}>
       <HitBar query={query} count={nav.count} index={nav.index} go={nav.go} />
-      <Box className="doc-text" sx={{ p: { xs: 2, md: 4 }, maxWidth: 860, mx: 'auto' }}>
+      {/* Лист бумаги: тёмный текст на белом при любой теме приложения */}
+      <Box
+        className="doc-text"
+        sx={{ p: { xs: 2, md: 5 }, maxWidth: 860, mx: 'auto', my: 2, bgcolor: '#fff', boxShadow: '0 4px 18px rgba(20,10,40,0.18)' }}
+      >
         {segs.map((s, i) => (s.hit ? <mark key={i} className="doc-hl">{s.text}</mark> : <span key={i}>{s.text}</span>))}
       </Box>
     </Box>

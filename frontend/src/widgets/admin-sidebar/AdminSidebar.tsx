@@ -13,9 +13,6 @@ import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined'
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined'
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined'
-import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
-import CompareArrowsOutlinedIcon from '@mui/icons-material/CompareArrowsOutlined'
-import AnalyticsOutlinedIcon from '@mui/icons-material/AnalyticsOutlined'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { NavLink } from 'react-router-dom'
 import { paths } from '@/app/router/routePaths'
@@ -27,21 +24,20 @@ interface AdminSidebarProps {
   onMobileClose: () => void
 }
 
+// Разделы «Редакции», «Противоречия», «Аналитика» скрыты, пока у них нет API:
+// изменения редакций и противоречия показываются прямо в ответах ассистента.
 const adminItems = [
   { label: 'Обзор', icon: <DashboardOutlinedIcon />, to: paths.admin.dashboard, end: true },
   { label: 'Документы', icon: <ArticleOutlinedIcon />, to: paths.admin.documents },
   { label: 'Загрузка', icon: <UploadFileOutlinedIcon />, to: paths.admin.upload },
   { label: 'Участники', icon: <GroupsOutlinedIcon />, to: paths.admin.participants },
-  { label: 'Редакции', icon: <HistoryOutlinedIcon />, to: paths.admin.versions },
-  { label: 'Противоречия', icon: <CompareArrowsOutlinedIcon />, to: paths.admin.conflicts },
-  { label: 'Аналитика', icon: <AnalyticsOutlinedIcon />, to: paths.admin.analytics },
 ]
 
 export function AdminSidebar({ mobileOpen, onMobileClose }: AdminSidebarProps) {
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar sx={{ px: 2, flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
-        <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
+        <Typography variant="h6" noWrap sx={{ fontWeight: 700, color: 'primary.main', fontSize: '1.05rem', maxWidth: '100%' }}>
           Администрирование
         </Typography>
         <Typography variant="caption" color="text.secondary">

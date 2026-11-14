@@ -55,7 +55,216 @@ func SeedDemo(ctx context.Context, st Store, withDocs bool) {
 		return
 	}
 
-	docs := []model.Document{
+	docs := demoDocuments()
+
+	var borrowingDoc, orderDoc model.Document
+	for i, d := range docs {
+		doc, err := st.CreateDocument(ctx, d)
+		if err != nil {
+			log.Printf("seed: %v", err)
+			continue
+		}
+		switch doc.Title {
+		case docs[2].Title:
+			borrowingDoc = doc
+		case docs[3].Title:
+			orderDoc = doc
+		}
+		if i == 0 {
+			if _, err := st.MarkRead(ctx, doc.ID, ivan.ID); err != nil {
+				log.Printf("seed: %v", err)
+			}
+		}
+	}
+
+	// Демонстрационная нормативная связь: приказ 5990-1 отменяет порядок 2024.
+	if borrowingDoc.ID != "" && orderDoc.ID != "" {
+		vers, err := st.ListVersions(ctx, orderDoc.ID)
+		if err == nil && len(vers) > 0 {
+			if _, err := st.CreateRelation(ctx, model.DocumentRelation{
+				SourceVersionID:  vers[0].ID,
+				TargetDocumentID: borrowingDoc.ID,
+				RelationType:     "repeals",
+				ReviewStatus:     "confirmed",
+			}); err != nil {
+				log.Printf("seed: relation: %v", err)
+			}
+		}
+	}
+	log.Printf("seed: loaded %d demo documents", len(docs))
+}
+
+func seedUser(ctx context.Context, st Store, u model.User, hash string) (model.User, error) {
+	user, err := st.CreateUser(ctx, u, hash)
+	if errors.Is(err, ErrConflict) {
+		return model.User{}, nil
+	}
+	return user, err
+}
+
+// ---------- onboarding demo: departments, people, assignments ----------
+
+var demoDepartments = []string{
+	"Научно-исследовательские подразделения",
+	"Финансово-экономическое управление",
+	"ЦИТ — центр информационных технологий",
+	"Отдел кадров",
+	"Культурно-массовый отдел",
+}
+
+type demoPerson struct {
+	name, login, password, role, dept, position string
+}
+
+var demoPeople = []demoPerson{
+	{"Иван Петров", "ivan", "ivan123", "employee", "Научно-исследовательские подразделения", "Руководитель проекта (новый сотрудник)"},
+	{"Мария Сидорова", "maria", "maria123", "employee", "Финансово-экономическое управление", "Экономист"},
+	{"Олег Смирнов", "oleg", "oleg123", "employee", "ЦИТ — центр информационных технологий", "Инженер первой линии поддержки"},
+	{"Анна Кузнецова", "anna", "anna123", "employee", "Отдел кадров", "Специалист по подбору персонала"},
+}
+
+// SeedOrg makes sure the demo departments exist (the MIPT directory from
+// migration 0004 is reused where names match) and attaches the demo
+// employees to them. Idempotent: existing department membership is kept.
+func SeedOrg(ctx context.Context, st Store) {
+	ids := map[string]string{}
+	for _, name := range demoDepartments {
+		if d, err := st.DepartmentByName(ctx, name); err == nil {
+			ids[name] = d.ID
+			continue
+		}
+		d, err := st.CreateDepartment(ctx, name)
+		if err != nil {
+			log.Printf("seed: department %q: %v", name, err)
+			continue
+		}
+		ids[name] = d.ID
+	}
+	attached := 0
+	for _, p := range demoPeople {
+		u, _, err := st.GetUserByLogin(ctx, p.login)
+		if errors.Is(err, ErrNotFound) {
+			h, herr := bcrypt.GenerateFromPassword([]byte(p.password), bcrypt.DefaultCost)
+			if herr != nil {
+				continue
+			}
+			first, last, _ := strings.Cut(p.name, " ")
+			u, err = st.CreateUser(ctx, model.User{Name: p.name, FirstName: first, LastName: last,
+				Login: p.login, Email: p.login + "@example.com", Role: p.role,
+				EmployeeCategory: "employee", OnboardingComplete: true}, string(h))
+		}
+		if err != nil {
+			log.Printf("seed: user %s: %v", p.login, err)
+			continue
+		}
+		prof, err := st.GetUserProfile(ctx, u.ID)
+		if err != nil || prof.DepartmentID != "" {
+			continue // already placed (possibly by an admin)
+		}
+		dep, pos := ids[p.dept], p.position
+		if err := st.UpdateUserOrg(ctx, u.ID, nil, &dep, &pos, nil); err == nil {
+			attached++
+		}
+	}
+	if attached > 0 {
+		log.Printf("seed: %d demo employees placed into departments", attached)
+	}
+}
+
+// demoAssignment refers to a document by number or by a title fragment.
+type demoAssignment struct {
+	match       string
+	target      string // "all", department name or user login
+	requirement string
+	dueDays     int
+}
+
+var demoAssignments = []demoAssignment{
+	// Всем сотрудникам.
+	{"2993-1", "all", "required", 14},
+	{"1292-1", "all", "optional", 0},
+	{"поселения", "all", "optional", 0},
+	{"3897-1", "all", "optional", 0},
+	// Научные подразделения: проекты, ФЛС, сметы, заимствование, командировки.
+	{"3065-1", "Научно-исследовательские подразделения", "required", 30},
+	{"460-1", "Научно-исследовательские подразделения", "required", 30},
+	{"700", "Научно-исследовательские подразделения", "required", 30},
+	{"794-1", "Научно-исследовательские подразделения", "required", 30},
+	{"889-1", "Научно-исследовательские подразделения", "required", 30},
+	{"5990-1", "Научно-исследовательские подразделения", "required", 30},
+	{"командировании", "Научно-исследовательские подразделения", "required", 30},
+	{"3699-1", "Научно-исследовательские подразделения", "optional", 0},
+	// Финансово-экономическое управление.
+	{"794-1", "Финансово-экономическое управление", "required", 30},
+	{"889-1", "Финансово-экономическое управление", "required", 30},
+	{"3614-1", "Финансово-экономическое управление", "required", 30},
+	{"3699-1", "Финансово-экономическое управление", "required", 30},
+	{"по ЭБ", "Финансово-экономическое управление", "required", 30},
+	{"5990-1", "Финансово-экономическое управление", "required", 30},
+	{"700", "Финансово-экономическое управление", "required", 30},
+	{"3065-1", "Финансово-экономическое управление", "optional", 0},
+	// ИТ, кадры, мероприятия.
+	{"1292-1", "ЦИТ — центр информационных технологий", "required", 30},
+	{"подбора персонала", "Отдел кадров", "required", 30},
+	{"командировании", "Отдел кадров", "required", 30},
+	{"3897-1", "Культурно-массовый отдел", "required", 30},
+	// Лично новому сотруднику: заселение в общежитие.
+	{"поселения", "ivan", "required", 7},
+}
+
+// SeedAssignments creates the demo assignments once the documents are
+// parsed. Runs only when there are no assignments yet.
+func SeedAssignments(ctx context.Context, st Store) {
+	if n, err := st.CountAssignments(ctx); err != nil || n > 0 {
+		return
+	}
+	docs, err := st.ListDocuments(ctx)
+	if err != nil {
+		return
+	}
+	find := func(match string) string {
+		for _, d := range docs {
+			if d.DocumentNumber == match || strings.Contains(strings.ToLower(d.Title), strings.ToLower(match)) {
+				return d.ID
+			}
+		}
+		return ""
+	}
+	created := 0
+	for _, a := range demoAssignments {
+		docID := find(a.match)
+		if docID == "" {
+			continue
+		}
+		targetType, targetID := "all", ""
+		if a.target != "all" {
+			if dep, err := st.DepartmentByName(ctx, a.target); err == nil {
+				targetType, targetID = "department", dep.ID
+			} else if u, _, err := st.GetUserByLogin(ctx, a.target); err == nil {
+				targetType, targetID = "user", u.ID
+			} else {
+				continue
+			}
+		}
+		var due *time.Time
+		if a.dueDays > 0 {
+			t := time.Now().AddDate(0, 0, a.dueDays).Truncate(24 * time.Hour)
+			due = &t
+		}
+		if _, _, err := st.UpsertAssignment(ctx, model.Assignment{
+			DocumentID: docID, TargetType: targetType, TargetID: targetID,
+			Requirement: a.requirement, DueDate: due,
+		}); err == nil {
+			created++
+		}
+	}
+	log.Printf("seed: %d demo assignments", created)
+}
+
+// demoDocuments are synthetic regulations used only with SEED_DEMO_DATA=true.
+// They have no source file and are not real MIPT acts.
+func demoDocuments() []model.Document {
+	return []model.Document{
 		{
 			Title:        "Регламент организации командировок работников МФТИ",
 			Tags:         []string{"командировки", "обязательный"},
@@ -304,207 +513,46 @@ func SeedDemo(ctx context.Context, st Store, withDocs bool) {
 3.2. Отпуск предоставляется по графику отпусков, утверждаемому не позднее чем за 2 недели до начала календарного года.`,
 		},
 	}
-
-	var borrowingDoc, orderDoc model.Document
-	for i, d := range docs {
-		doc, err := st.CreateDocument(ctx, d)
-		if err != nil {
-			log.Printf("seed: %v", err)
-			continue
-		}
-		switch doc.Title {
-		case docs[2].Title:
-			borrowingDoc = doc
-		case docs[3].Title:
-			orderDoc = doc
-		}
-		if i == 0 {
-			if _, err := st.MarkRead(ctx, doc.ID, ivan.ID); err != nil {
-				log.Printf("seed: %v", err)
-			}
-		}
-	}
-
-	// Демонстрационная нормативная связь: приказ 5990-1 отменяет порядок 2024.
-	if borrowingDoc.ID != "" && orderDoc.ID != "" {
-		vers, err := st.ListVersions(ctx, orderDoc.ID)
-		if err == nil && len(vers) > 0 {
-			if _, err := st.CreateRelation(ctx, model.DocumentRelation{
-				SourceVersionID:  vers[0].ID,
-				TargetDocumentID: borrowingDoc.ID,
-				RelationType:     "repeals",
-				ReviewStatus:     "confirmed",
-			}); err != nil {
-				log.Printf("seed: relation: %v", err)
-			}
-		}
-	}
-	log.Printf("seed: loaded %d demo documents", len(docs))
 }
 
-func seedUser(ctx context.Context, st Store, u model.User, hash string) (model.User, error) {
-	user, err := st.CreateUser(ctx, u, hash)
-	if errors.Is(err, ErrConflict) {
-		return model.User{}, nil
-	}
-	return user, err
-}
-
-// ---------- onboarding demo: departments, people, assignments ----------
-
-var demoDepartments = []string{
-	"Научно-исследовательские подразделения",
-	"Финансово-экономическое управление",
-	"ЦИТ — центр информационных технологий",
-	"Отдел кадров",
-	"Культурно-массовый отдел",
-}
-
-type demoPerson struct {
-	name, login, password, role, dept, position string
-}
-
-var demoPeople = []demoPerson{
-	{"Иван Петров", "ivan", "ivan123", "employee", "Научно-исследовательские подразделения", "Руководитель проекта (новый сотрудник)"},
-	{"Мария Сидорова", "maria", "maria123", "employee", "Финансово-экономическое управление", "Экономист"},
-	{"Олег Смирнов", "oleg", "oleg123", "employee", "ЦИТ — центр информационных технологий", "Инженер первой линии поддержки"},
-	{"Анна Кузнецова", "anna", "anna123", "employee", "Отдел кадров", "Специалист по подбору персонала"},
-}
-
-// SeedOrg makes sure the demo departments exist (the MIPT directory from
-// migration 0004 is reused where names match) and attaches the demo
-// employees to them. Idempotent: existing department membership is kept.
-func SeedOrg(ctx context.Context, st Store) {
-	ids := map[string]string{}
-	for _, name := range demoDepartments {
-		if d, err := st.DepartmentByName(ctx, name); err == nil {
-			ids[name] = d.ID
-			continue
-		}
-		d, err := st.CreateDepartment(ctx, name)
-		if err != nil {
-			log.Printf("seed: department %q: %v", name, err)
-			continue
-		}
-		ids[name] = d.ID
-	}
-	attached := 0
-	for _, p := range demoPeople {
-		u, _, err := st.GetUserByLogin(ctx, p.login)
-		if errors.Is(err, ErrNotFound) {
-			h, herr := bcrypt.GenerateFromPassword([]byte(p.password), bcrypt.DefaultCost)
-			if herr != nil {
-				continue
-			}
-			first, last, _ := strings.Cut(p.name, " ")
-			u, err = st.CreateUser(ctx, model.User{Name: p.name, FirstName: first, LastName: last,
-				Login: p.login, Email: p.login + "@example.com", Role: p.role,
-				EmployeeCategory: "employee", OnboardingComplete: true}, string(h))
-		}
-		if err != nil {
-			log.Printf("seed: user %s: %v", p.login, err)
-			continue
-		}
-		prof, err := st.GetUserProfile(ctx, u.ID)
-		if err != nil || prof.DepartmentID != "" {
-			continue // already placed (possibly by an admin)
-		}
-		dep, pos := ids[p.dept], p.position
-		if err := st.UpdateUserOrg(ctx, u.ID, nil, &dep, &pos, nil); err == nil {
-			attached++
-		}
-	}
-	if attached > 0 {
-		log.Printf("seed: %d demo employees placed into departments", attached)
-	}
-}
-
-// demoAssignment refers to a document by number or by a title fragment.
-type demoAssignment struct {
-	match       string
-	target      string // "all", department name or user login
-	requirement string
-	dueDays     int
-}
-
-var demoAssignments = []demoAssignment{
-	// Всем сотрудникам.
-	{"2993-1", "all", "required", 14},
-	{"1292-1", "all", "optional", 0},
-	{"поселения", "all", "optional", 0},
-	{"3897-1", "all", "optional", 0},
-	// Научные подразделения: проекты, ФЛС, сметы, заимствование, командировки.
-	{"3065-1", "Научно-исследовательские подразделения", "required", 30},
-	{"460-1", "Научно-исследовательские подразделения", "required", 30},
-	{"700", "Научно-исследовательские подразделения", "required", 30},
-	{"794-1", "Научно-исследовательские подразделения", "required", 30},
-	{"889-1", "Научно-исследовательские подразделения", "required", 30},
-	{"5990-1", "Научно-исследовательские подразделения", "required", 30},
-	{"командировании", "Научно-исследовательские подразделения", "required", 30},
-	{"3699-1", "Научно-исследовательские подразделения", "optional", 0},
-	// Финансово-экономическое управление.
-	{"794-1", "Финансово-экономическое управление", "required", 30},
-	{"889-1", "Финансово-экономическое управление", "required", 30},
-	{"3614-1", "Финансово-экономическое управление", "required", 30},
-	{"3699-1", "Финансово-экономическое управление", "required", 30},
-	{"по ЭБ", "Финансово-экономическое управление", "required", 30},
-	{"5990-1", "Финансово-экономическое управление", "required", 30},
-	{"700", "Финансово-экономическое управление", "required", 30},
-	{"3065-1", "Финансово-экономическое управление", "optional", 0},
-	// ИТ, кадры, мероприятия.
-	{"1292-1", "ЦИТ — центр информационных технологий", "required", 30},
-	{"подбора персонала", "Отдел кадров", "required", 30},
-	{"командировании", "Отдел кадров", "required", 30},
-	{"3897-1", "Культурно-массовый отдел", "required", 30},
-	// Лично новому сотруднику: заселение в общежитие.
-	{"поселения", "ivan", "required", 7},
-}
-
-// SeedAssignments creates the demo assignments once the documents are
-// parsed. Runs only when there are no assignments yet.
-func SeedAssignments(ctx context.Context, st Store) {
-	if n, err := st.CountAssignments(ctx); err != nil || n > 0 {
-		return
+// PurgeDemoDocuments removes previously seeded synthetic documents when demo
+// data is switched off, so the assistant answers only from the real corpus.
+// Only documents without an uploaded source file are touched.
+func PurgeDemoDocuments(ctx context.Context, st Store) {
+	titles := map[string]bool{}
+	for _, d := range demoDocuments() {
+		titles[d.Title] = true
 	}
 	docs, err := st.ListDocuments(ctx)
 	if err != nil {
+		log.Printf("seed: purge demo: %v", err)
 		return
 	}
-	find := func(match string) string {
-		for _, d := range docs {
-			if d.DocumentNumber == match || strings.Contains(strings.ToLower(d.Title), strings.ToLower(match)) {
-				return d.ID
-			}
-		}
-		return ""
-	}
-	created := 0
-	for _, a := range demoAssignments {
-		docID := find(a.match)
-		if docID == "" {
+	removed := 0
+	for _, d := range docs {
+		if !titles[d.Title] {
 			continue
 		}
-		targetType, targetID := "all", ""
-		if a.target != "all" {
-			if dep, err := st.DepartmentByName(ctx, a.target); err == nil {
-				targetType, targetID = "department", dep.ID
-			} else if u, _, err := st.GetUserByLogin(ctx, a.target); err == nil {
-				targetType, targetID = "user", u.ID
-			} else {
-				continue
+		vers, err := st.ListVersions(ctx, d.ID)
+		if err != nil {
+			continue
+		}
+		hasFile := false
+		for _, v := range vers {
+			if v.SourceFileID != "" {
+				hasFile = true
 			}
 		}
-		var due *time.Time
-		if a.dueDays > 0 {
-			t := time.Now().AddDate(0, 0, a.dueDays).Truncate(24 * time.Hour)
-			due = &t
+		if hasFile {
+			continue
 		}
-		if _, _, err := st.UpsertAssignment(ctx, model.Assignment{
-			DocumentID: docID, TargetType: targetType, TargetID: targetID,
-			Requirement: a.requirement, DueDate: due,
-		}); err == nil {
-			created++
+		if err := st.DeleteDocument(ctx, d.ID); err != nil {
+			log.Printf("seed: purge demo %q: %v", d.Title, err)
+			continue
 		}
+		removed++
 	}
-	log.Printf("seed: %d demo assignments", created)
+	if removed > 0 {
+		log.Printf("seed: removed %d synthetic demo documents (SEED_DEMO_DATA=false)", removed)
+	}
 }

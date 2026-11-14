@@ -122,7 +122,9 @@ services:
       DOCS_DIR: /docs
       # Синтетические демо-документы выключены: ответы только по документам кейса.
       # Демо-аккаунты, подразделения и назначения создаются всегда.
-      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      # Синтетические (выдуманные) документы — только для разработки. Отдельное
+      # имя переменной, чтобы старое SEED_DEMO_DATA=true в .env их не включало.
+      SEED_DEMO_DATA: ${SEED_SYNTHETIC_DOCS:-false}
       # Auth / почта. Пустой SMTP_HOST отключает отправку писем.
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}

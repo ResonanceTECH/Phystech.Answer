@@ -111,7 +111,7 @@ docker compose down -v            # + удалить данные (БД, инд�
 - **Роли** — `employee`, `admin`, `expert`; админ-раздел `/admin`
   доступен `admin` и `expert` (проверка на backend).
 
-Демо-аккаунты (сеются при `SEED_DEMO_DATA=true`):
+Демо-аккаунты (создаются всегда; синтетические документы — только при `SEED_SYNTHETIC_DOCS=true`):
 `ivan.petrov@example.com / ivan123`, `maria.sidorova@example.com / maria123`,
 `admin@example.com / admin123`, `expert@example.com / expert123`.
 Также работает вход по старому логину (`ivan`, `admin`, …).

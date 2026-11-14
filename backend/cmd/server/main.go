@@ -38,6 +38,9 @@ func main() {
 
 	st := store.NewPostgres(pool)
 	store.SeedDemo(ctx, st, cfg.SeedDemoData)
+	if !cfg.SeedDemoData {
+		store.PurgeDemoDocuments(ctx, st)
+	}
 	if docs, err := st.ListDocuments(ctx); err == nil {
 		for _, doc := range docs {
 			if doc.Category != "" && doc.Category != "Прочие документы" {

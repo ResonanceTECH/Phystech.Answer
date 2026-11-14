@@ -60,4 +60,6 @@ jobs:
             ./ "$DEPLOY_USER@$DEPLOY_HOST:/home/deploy/phystech-answer/"
 
           ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" \
-            'cd /home/deploy/phystech-answer && docker compose up -d --build'
+            'cd /home/deploy/phystech-answer && docker compose up -d --build && docker compose restart backend'
+          # restart backend: импорт ml/data/documents идёт при старте backend,
+          # а без изменений образа compose его не перезапускает.

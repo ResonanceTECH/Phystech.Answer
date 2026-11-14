@@ -78,12 +78,12 @@ export function ReadingPlanPage() {
       >
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ alignItems: { sm: 'center' } }}>
           <Box sx={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
-            <CircularProgress variant="determinate" value={100} size={112} thickness={4} sx={{ color: 'rgba(255,255,255,0.18)', position: 'absolute' }} />
-            <CircularProgress variant="determinate" value={req.pct} size={112} thickness={4} sx={{ color: '#fff' }} />
+            <CircularProgress variant="determinate" value={100} size={128} thickness={3.5} sx={{ color: 'rgba(255,255,255,0.18)', position: 'absolute' }} />
+            <CircularProgress variant="determinate" value={req.pct} size={128} thickness={3.5} sx={{ color: '#fff' }} />
             <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
               <Box>
-                <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1 }}>
-                  {req.pct}%
+                <Typography sx={{ fontWeight: 800, lineHeight: 1, fontSize: req.pct === 100 ? '1.7rem' : '2rem', letterSpacing: '-0.02em' }}>
+                  {req.total === 0 ? '—' : `${req.pct}%`}
                 </Typography>
                 <Typography variant="caption" sx={{ opacity: 0.85 }}>
                   {req.read} из {req.total}
