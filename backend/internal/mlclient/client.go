@@ -39,6 +39,7 @@ type Source struct {
 	Page       int     `json:"page,omitempty"`
 	Excerpt    string  `json:"excerpt"`
 	Score      float64 `json:"score"`
+	Ref        int     `json:"ref,omitempty"` // [n] marker in our pipeline's answer
 }
 
 // Step mirrors the structured step returned by the ML answer payload.
@@ -50,6 +51,9 @@ type Step struct {
 	Deadline    *string  `json:"deadline"`
 	Condition   *string  `json:"condition"`
 	CitationIDs []string `json:"citation_ids"`
+	// Our pipeline's compact step form: text with [n] markers + source refs.
+	Text string `json:"text,omitempty"`
+	Refs []int  `json:"refs,omitempty"`
 }
 
 // Conflict mirrors a detected contradiction between sources.
@@ -61,6 +65,7 @@ type Conflict struct {
 // AskResult is the ML answer plus the degraded-mode flag.
 type AskResult struct {
 	Answer             string
+	Summary            string
 	Sources            []Source
 	Status             string
 	Steps              []Step
@@ -104,10 +109,13 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 func (c *Client) Ask(ctx context.Context, question string) (AskResult, error) {
 	var ml struct {
 		Answer             string     `json:"answer"`
+		Summary            string     `json:"summary"`
 		Sources            []Source   `json:"sources"`
 		Status             string     `json:"status"`
 		Steps              []Step     `json:"steps"`
+		Notes              []string   `json:"notes"`
 		Warnings           []string   `json:"warnings"`
+		Missing            string     `json:"missing"`
 		MissingInformation []string   `json:"missing_information"`
 		Conflicts          []Conflict `json:"conflicts"`
 	}
@@ -122,11 +130,57 @@ func (c *Client) Ask(ctx context.Context, question string) (AskResult, error) {
 	if ml.Sources == nil {
 		ml.Sources = []Source{}
 	}
+	normalizeCompactSteps(ml.Steps, ml.Sources)
+	warnings := append(ml.Notes, ml.Warnings...)
+	missing := ml.MissingInformation
+	if strings.TrimSpace(ml.Missing) != "" {
+		missing = append(missing, ml.Missing)
+	}
 	return AskResult{
-		Answer: ml.Answer, Sources: ml.Sources, Status: ml.Status,
-		Steps: ml.Steps, Warnings: ml.Warnings,
-		MissingInformation: ml.MissingInformation, Conflicts: ml.Conflicts,
+		Answer: ml.Answer, Summary: ml.Summary, Sources: ml.Sources, Status: ml.Status,
+		Steps: ml.Steps, Warnings: warnings,
+		MissingInformation: missing, Conflicts: ml.Conflicts,
 	}, nil
+}
+
+// normalizeCompactSteps maps our pipeline's {text, refs} steps onto the
+// structured form: the text becomes title/description (keeping [n] markers
+// for the UI) and refs are linked to sources through synthetic chunk ids.
+func normalizeCompactSteps(steps []Step, sources []Source) {
+	byRef := map[int]int{}
+	for i := range sources {
+		ref := sources[i].Ref
+		if ref <= 0 {
+			ref = i + 1
+		}
+		byRef[ref] = i
+	}
+	for i := range steps {
+		st := &steps[i]
+		if st.Text == "" || st.Description != "" {
+			continue
+		}
+		st.Description = st.Text
+		st.Title = truncateRunes(st.Text, 120)
+		for _, ref := range st.Refs {
+			idx, ok := byRef[ref]
+			if !ok {
+				continue
+			}
+			if sources[idx].ChunkID == "" {
+				sources[idx].ChunkID = fmt.Sprintf("ref:%d", ref)
+			}
+			st.CitationIDs = append(st.CitationIDs, sources[idx].ChunkID)
+		}
+	}
+}
+
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
 }
 
 // AskRaw returns the full ML answer JSON (status, summary, steps,

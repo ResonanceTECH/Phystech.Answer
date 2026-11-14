@@ -120,8 +120,10 @@ func (s *Server) Handler() http.Handler {
 
 	// Feedback, saved instructions, action routes.
 	mux.HandleFunc("POST /api/v1/answers/{id}/feedback", s.answerFeedback)
+	mux.HandleFunc("GET /api/v1/answers/{id}", s.getAnswer)
 	mux.HandleFunc("POST /api/v1/saved-instructions", s.createSavedInstruction)
 	mux.HandleFunc("GET /api/v1/saved-instructions", s.listSavedInstructions)
+	mux.HandleFunc("DELETE /api/v1/saved-instructions/{id}", s.deleteSavedInstruction)
 	mux.HandleFunc("POST /api/v1/action-routes", s.createActionRoute)
 	mux.HandleFunc("GET /api/v1/action-routes", s.listActionRoutes)
 	mux.HandleFunc("GET /api/v1/action-routes/{id}", s.getActionRoute)

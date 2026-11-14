@@ -471,10 +471,14 @@ func (r *Runner) buildAnswer(ctx context.Context, p AnswerGeneratePayload, res m
 		missing = append(missing, "В базе знаний не найдено подтверждающих фрагментов.")
 	}
 
+	summary := res.Answer
+	if strings.TrimSpace(res.Summary) != "" {
+		summary = res.Summary
+	}
 	answer := model.Answer{
 		RunID:              p.RunID,
 		Status:             status,
-		Summary:            res.Answer,
+		Summary:            summary,
 		Warnings:           warnings,
 		MissingInformation: missing,
 	}

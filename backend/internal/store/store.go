@@ -104,6 +104,7 @@ type Store interface {
 	AddFeedback(ctx context.Context, answerID, userID, rating, comment string) error
 	CreateSavedInstruction(ctx context.Context, si model.SavedInstruction) (model.SavedInstruction, error)
 	ListSavedInstructions(ctx context.Context, userID string) ([]model.SavedInstruction, error)
+	DeleteSavedInstruction(ctx context.Context, id, userID string) error
 	CreateActionRoute(ctx context.Context, route model.ActionRoute, steps []model.ActionRouteStep) (model.ActionRoute, error)
 	ListActionRoutes(ctx context.Context, userID string) ([]model.ActionRoute, error)
 	GetActionRoute(ctx context.Context, id string) (model.ActionRoute, []model.ActionRouteStep, error)

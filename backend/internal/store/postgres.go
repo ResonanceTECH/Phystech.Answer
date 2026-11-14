@@ -956,7 +956,8 @@ func (p *Postgres) CreateAnswer(ctx context.Context, a model.Answer, steps []mod
 	}
 
 	for i, c := range citations {
-		c.ID = newID("cit")
+		// Readers ORDER BY id: keep the ML source order so [n] markers stay valid.
+		c.ID = fmt.Sprintf("cit_%s_%03d", a.ID, i)
 		stepID := ""
 		if c.StepOrder > 0 {
 			stepID = stepIDByOrder[c.StepOrder]
@@ -1355,6 +1356,17 @@ func (p *Postgres) CreateSavedInstruction(ctx context.Context, si model.SavedIns
 	_, err := p.pool.Exec(ctx, `INSERT INTO saved_instructions (id, user_id, answer_id, title, created_at)
 		VALUES ($1,$2,$3,$4,$5)`, si.ID, si.UserID, si.AnswerID, si.Title, si.CreatedAt)
 	return si, err
+}
+
+func (p *Postgres) DeleteSavedInstruction(ctx context.Context, id, userID string) error {
+	tag, err := p.pool.Exec(ctx, `DELETE FROM saved_instructions WHERE id=$1 AND user_id=$2`, id, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (p *Postgres) ListSavedInstructions(ctx context.Context, userID string) ([]model.SavedInstruction, error) {

@@ -74,7 +74,7 @@ function AssistantBubble({
   conversationTitle?: string
 }) {
   const openSources = useChatUiStore((s) => s.openSources)
-  const saveInstruction = useSaveInstruction()
+  const { save: saveInstruction, pending: saving } = useSaveInstruction()
   const [saved, setSaved] = useState(false)
 
   if (message.pending) {
@@ -112,13 +112,13 @@ function AssistantBubble({
     if (src) openSources(src.documentId, src.quote)
   }
 
-  const handleSave = () => {
-    saveInstruction({
-      title: conversationTitle ?? 'Ответ ассистента',
-      answer: message.text,
-      sources,
-    })
-    setSaved(true)
+  const handleSave = async () => {
+    if (!message.answerId) return
+    const ok = await saveInstruction(
+      message.answerId,
+      conversationTitle ?? 'Ответ ассистента',
+    )
+    if (ok) setSaved(true)
   }
 
   return (
@@ -174,8 +174,8 @@ function AssistantBubble({
               size="small"
               variant="text"
               startIcon={saved ? <BookmarkAddedIcon /> : <BookmarkBorderIcon />}
-              onClick={handleSave}
-              disabled={saved}
+              onClick={() => void handleSave()}
+              disabled={saved || saving || !message.answerId}
             >
               {saved ? 'Сохранено' : 'Сохранить инструкцию'}
             </Button>

@@ -5,6 +5,10 @@ import type { ChatMessage, Conversation } from './types'
 interface ConversationState {
   conversations: Conversation[]
   messages: Record<string, ChatMessage[]>
+  // Гидратация с backend: заменить список диалогов и/или сообщения.
+  setConversations: (conversations: Conversation[]) => void
+  upsertConversation: (conversation: Conversation) => void
+  setMessages: (conversationId: string, messages: ChatMessage[]) => void
   createConversation: (title?: string) => string
   deleteConversation: (id: string) => void
   renameConversation: (id: string, title: string) => void
@@ -31,6 +35,21 @@ export const useConversationStore = create<ConversationState>()(
     (set, get) => ({
       conversations: [],
       messages: {},
+
+      setConversations: (conversations) => set({ conversations }),
+
+      upsertConversation: (conversation) =>
+        set((s) => {
+          const exists = s.conversations.some((c) => c.id === conversation.id)
+          return {
+            conversations: exists
+              ? s.conversations.map((c) => (c.id === conversation.id ? conversation : c))
+              : [conversation, ...s.conversations],
+          }
+        }),
+
+      setMessages: (conversationId, msgs) =>
+        set((s) => ({ messages: { ...s.messages, [conversationId]: msgs } })),
 
       createConversation: (title) => {
         const id = newId('conv')
