@@ -72,6 +72,7 @@ type AskResult struct {
 	Warnings           []string
 	MissingInformation []string
 	Conflicts          []Conflict
+	Trace              json.RawMessage
 	// Stub is true when ML was unreachable and this is a fallback reply.
 	Stub bool
 }
@@ -108,16 +109,17 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 // Ask runs the RAG pipeline in the ML service.
 func (c *Client) Ask(ctx context.Context, question string) (AskResult, error) {
 	var ml struct {
-		Answer             string     `json:"answer"`
-		Summary            string     `json:"summary"`
-		Sources            []Source   `json:"sources"`
-		Status             string     `json:"status"`
-		Steps              []Step     `json:"steps"`
-		Notes              []string   `json:"notes"`
-		Warnings           []string   `json:"warnings"`
-		Missing            string     `json:"missing"`
-		MissingInformation []string   `json:"missing_information"`
-		Conflicts          []Conflict `json:"conflicts"`
+		Answer             string          `json:"answer"`
+		Summary            string          `json:"summary"`
+		Sources            []Source        `json:"sources"`
+		Status             string          `json:"status"`
+		Steps              []Step          `json:"steps"`
+		Notes              []string        `json:"notes"`
+		Warnings           []string        `json:"warnings"`
+		Missing            string          `json:"missing"`
+		MissingInformation []string        `json:"missing_information"`
+		Conflicts          []Conflict      `json:"conflicts"`
+		Trace              json.RawMessage `json:"trace"`
 	}
 	code, err := c.do(ctx, http.MethodPost, "/api/ask",
 		map[string]string{"question": question}, &ml)
@@ -139,7 +141,7 @@ func (c *Client) Ask(ctx context.Context, question string) (AskResult, error) {
 	return AskResult{
 		Answer: ml.Answer, Summary: ml.Summary, Sources: ml.Sources, Status: ml.Status,
 		Steps: ml.Steps, Warnings: warnings,
-		MissingInformation: missing, Conflicts: ml.Conflicts,
+		MissingInformation: missing, Conflicts: ml.Conflicts, Trace: ml.Trace,
 	}, nil
 }
 

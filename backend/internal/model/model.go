@@ -155,14 +155,16 @@ type RunEvent struct {
 }
 
 type Answer struct {
-	ID                 string    `json:"id"`
-	RunID              string    `json:"runId"`
-	ConversationID     string    `json:"conversationId,omitempty"`
-	Status             string    `json:"status"` // answered|partial|clarification_required|not_found|conflict|error
-	Summary            string    `json:"summary"`
-	Warnings           []string  `json:"warnings"`
-	MissingInformation []string  `json:"missing_information"`
-	CreatedAt          time.Time `json:"createdAt"`
+	ID                 string   `json:"id"`
+	RunID              string   `json:"runId"`
+	ConversationID     string   `json:"conversationId,omitempty"`
+	Status             string   `json:"status"` // answered|partial|clarification_required|not_found|conflict|error
+	Summary            string   `json:"summary"`
+	Warnings           []string `json:"warnings"`
+	MissingInformation []string `json:"missing_information"`
+	// Trace is the ML pipeline trace (raw JSON), shown as «Как найден ответ».
+	Trace     json.RawMessage `json:"trace,omitempty"`
+	CreatedAt time.Time       `json:"createdAt"`
 }
 
 type AnswerStep struct {

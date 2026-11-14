@@ -148,6 +148,7 @@ func (s *Server) getAnswer(w http.ResponseWriter, r *http.Request) {
 		"sources":             citations,
 		"warnings":            answer.Warnings,
 		"missing_information": answer.MissingInformation,
+		"trace":               answer.Trace,
 	})
 }
 

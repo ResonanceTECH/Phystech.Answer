@@ -102,10 +102,11 @@ function DocumentSource({
 
       <Divider />
 
-      <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+      {/* Текст документа как лист бумаги: читается при любой теме */}
+      <Paper variant="outlined" sx={{ p: 2, bgcolor: '#fff' }}>
         <Typography
           variant="body2"
-          sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.65, color: 'text.primary' }}
+          sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.65, color: '#1f1a2e' }}
         >
           {doc.content}
         </Typography>

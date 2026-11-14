@@ -1,6 +1,6 @@
 import { api } from '@/shared/api'
 import type { SourceReference } from '@/entities/source-reference'
-import type { AnswerConflict, AnswerStatus, AnswerStep } from '@/entities/answer'
+import type { AnswerConflict, AnswerStatus, AnswerStep, AnswerTrace } from '@/entities/answer'
 
 // Типы ответов backend /api/v1 (conversations/runs/answers/instructions/routes).
 
@@ -57,6 +57,7 @@ export interface ServerAnswer {
   sources: ServerCitation[]
   warnings: string[]
   missing_information: string[]
+  trace?: AnswerTrace | null
 }
 
 export interface ServerSavedInstruction {

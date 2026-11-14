@@ -934,9 +934,9 @@ func (p *Postgres) CreateAnswer(ctx context.Context, a model.Answer, steps []mod
 	if a.MissingInformation == nil {
 		a.MissingInformation = []string{}
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO answers (id, run_id, status, summary, warnings, missing_information, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		a.ID, a.RunID, a.Status, a.Summary, a.Warnings, a.MissingInformation, a.CreatedAt)
+	_, err = tx.Exec(ctx, `INSERT INTO answers (id, run_id, status, summary, warnings, missing_information, created_at, trace)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		a.ID, a.RunID, a.Status, a.Summary, a.Warnings, a.MissingInformation, a.CreatedAt, nilIfEmptyJSON(a.Trace))
 	if err != nil {
 		return model.Answer{}, err
 	}
@@ -979,11 +979,11 @@ func (p *Postgres) CreateAnswer(ctx context.Context, a model.Answer, steps []mod
 func (p *Postgres) GetAnswerByRun(ctx context.Context, runID string) (model.Answer, []model.AnswerStep, []model.Citation, error) {
 	var a model.Answer
 	err := p.pool.QueryRow(ctx, `SELECT a.id, a.run_id, COALESCE(r.conversation_id,''),
-		a.status, a.summary, a.warnings, a.missing_information, a.created_at
+		a.status, a.summary, a.warnings, a.missing_information, a.created_at, a.trace
 		FROM answers a JOIN answer_runs r ON r.id = a.run_id
 		WHERE a.run_id=$1`, runID).Scan(
 		&a.ID, &a.RunID, &a.ConversationID, &a.Status, &a.Summary,
-		&a.Warnings, &a.MissingInformation, &a.CreatedAt)
+		&a.Warnings, &a.MissingInformation, &a.CreatedAt, &a.Trace)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.Answer{}, nil, nil, ErrNotFound
 	}
@@ -1046,11 +1046,11 @@ func (p *Postgres) GetAnswerByRun(ctx context.Context, runID string) (model.Answ
 func (p *Postgres) GetAnswer(ctx context.Context, id string) (model.Answer, error) {
 	var a model.Answer
 	err := p.pool.QueryRow(ctx, `SELECT a.id, a.run_id, COALESCE(r.conversation_id,''),
-		a.status, a.summary, a.warnings, a.missing_information, a.created_at
+		a.status, a.summary, a.warnings, a.missing_information, a.created_at, a.trace
 		FROM answers a JOIN answer_runs r ON r.id = a.run_id
 		WHERE a.id=$1`, id).Scan(
 		&a.ID, &a.RunID, &a.ConversationID, &a.Status, &a.Summary,
-		&a.Warnings, &a.MissingInformation, &a.CreatedAt)
+		&a.Warnings, &a.MissingInformation, &a.CreatedAt, &a.Trace)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.Answer{}, ErrNotFound
 	}
@@ -1503,4 +1503,12 @@ func (p *Postgres) AddAuditLog(ctx context.Context, userID, entity, entityID, ac
 		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
 		nilIfEmpty(userID), entity, entityID, action, oldJ, newJ, reason)
 	return err
+}
+
+// nilIfEmptyJSON stores SQL NULL for an absent JSON document.
+func nilIfEmptyJSON(b []byte) any {
+	if len(b) == 0 || string(b) == "null" {
+		return nil
+	}
+	return string(b)
 }

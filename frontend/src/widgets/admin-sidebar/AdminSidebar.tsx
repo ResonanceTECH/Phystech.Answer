@@ -36,8 +36,8 @@ const adminItems = [
 export function AdminSidebar({ mobileOpen, onMobileClose }: AdminSidebarProps) {
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Toolbar sx={{ px: 2, flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
-        <Typography variant="h6" noWrap sx={{ fontWeight: 700, color: 'primary.main', fontSize: '1.05rem', maxWidth: '100%' }}>
+      <Toolbar sx={{ px: 2, flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 0.25 }}>
+        <Typography variant="h6" noWrap sx={{ fontWeight: 700, color: 'primary.main', fontSize: '0.88rem', maxWidth: '100%' }}>
           Администрирование
         </Typography>
         <Typography variant="caption" color="text.secondary">

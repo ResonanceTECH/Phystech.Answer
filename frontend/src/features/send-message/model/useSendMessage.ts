@@ -34,6 +34,7 @@ function mapAnswer(convId: string, pendingId: string, runId: string, ans: Server
       conflicts: fields.conflicts,
       notes: fields.notes,
       missing: fields.missing,
+      trace: ans.trace ?? undefined,
       sources: (ans.sources ?? []).map(toSourceReference),
       status: ans.status,
       stub: false,

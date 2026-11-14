@@ -481,6 +481,7 @@ func (r *Runner) buildAnswer(ctx context.Context, p AnswerGeneratePayload, res m
 		Summary:            summary,
 		Warnings:           warnings,
 		MissingInformation: missing,
+		Trace:              res.Trace,
 	}
 	return answer, steps, citations, res.Answer
 }
