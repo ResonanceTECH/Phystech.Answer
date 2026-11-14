@@ -55,7 +55,7 @@ func (s *Server) uploadDocuments(w http.ResponseWriter, r *http.Request) {
 
 	results := make([]uploadResult, 0, len(files))
 	for _, fh := range files {
-		results = append(results, s.processUpload(r, user, fh.FileName(), func() (io.ReadCloser, error) {
+		results = append(results, s.processUpload(r, user, fh.Filename, func() (io.ReadCloser, error) {
 			return fh.Open()
 		}, titleOverride, tags, category, docType, docNumber))
 	}
@@ -102,8 +102,11 @@ func (s *Server) processUpload(r *http.Request, user model.User, filename string
 		return res
 	}
 
+	// Content-addressed key: identical files share one object.
+	storageKey := "files/" + sum + filenameExt(filename)
 	fileRec, err := s.store.CreateSourceFile(ctx, model.SourceFile{
 		OriginalFilename: filename,
+		StorageKey:       storageKey,
 		MimeType:         mimeByExt(filename),
 		SizeBytes:        int64(len(data)),
 		SHA256:           sum,
@@ -116,14 +119,11 @@ func (s *Server) processUpload(r *http.Request, user model.User, filename string
 	}
 	res.FileID = fileRec.ID
 
-	storageKey := jobs.FileStorageKey(fileRec.ID, filename)
 	if err := s.fs.Save(ctx, storageKey, strings.NewReader(string(data))); err != nil {
 		res.Status = "rejected"
 		res.Error = "failed to store file"
 		return res
 	}
-	// storage_key needs the actual key, not the filename.
-	_ = fileRec
 
 	title := titleOverride
 	if title == "" {
@@ -159,7 +159,8 @@ func (s *Server) processUpload(r *http.Request, user model.User, filename string
 	}
 
 	payload, _ := json.Marshal(jobs.DocumentParsePayload{
-		FileID: fileRec.ID, DocumentID: doc.ID, VersionID: version.ID, Filename: filename,
+		FileID: fileRec.ID, DocumentID: doc.ID, VersionID: version.ID,
+		Filename: filename, StorageKey: storageKey,
 	})
 	job, err := s.store.EnqueueJob(ctx, model.Job{
 		DocumentVersionID: version.ID,
@@ -331,7 +332,7 @@ func (s *Server) serveSourceFile(w http.ResponseWriter, r *http.Request, fileID 
 		return
 	}
 	defer rc.Close()
-	w.Header().Set("Content-Type", defaultStr(f.MimeType, "application/octet-stream"))
+	w.Header().Set("Content-Type", orDefault(f.MimeType, "application/octet-stream"))
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename*=UTF-8''%s", f.OriginalFilename))
 	io.Copy(w, rc)
 }

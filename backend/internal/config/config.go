@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -11,23 +12,47 @@ type Config struct {
 	Addr         string
 	CORSOrigin   string
 	MLServiceURL string
+	MLTimeoutSec int
 	SeedDemoData bool
+
+	DatabaseURL string
+	DBMaxConns  int32
+
+	StorageDriver string
+	StoragePath   string
+
+	WorkerConcurrency int
 }
 
 func Load() Config {
 	loadDotEnv(".env")
 
 	return Config{
-		Addr:         ":" + getEnv("PORT", "8080"),
-		CORSOrigin:   getEnv("CORS_ORIGIN", "*"),
-		MLServiceURL: strings.TrimRight(getEnv("ML_SERVICE_URL", "http://localhost:8000"), "/"),
-		SeedDemoData: getEnv("SEED_DEMO_DATA", "true") != "false",
+		Addr:              ":" + getEnv("PORT", getEnv("HTTP_PORT", "8080")),
+		CORSOrigin:        getEnv("CORS_ORIGIN", "*"),
+		MLServiceURL:      strings.TrimRight(getEnv("ML_SERVICE_URL", "http://localhost:8000"), "/"),
+		MLTimeoutSec:      getEnvInt("ML_TIMEOUT_SECONDS", 120),
+		SeedDemoData:      getEnv("SEED_DEMO_DATA", "true") != "false",
+		DatabaseURL:       getEnv("DATABASE_URL", ""),
+		DBMaxConns:        int32(getEnvInt("DB_MAX_CONNS", 10)),
+		StorageDriver:     getEnv("STORAGE_DRIVER", "local"),
+		StoragePath:       getEnv("STORAGE_PATH", "./storage"),
+		WorkerConcurrency: getEnvInt("WORKER_CONCURRENCY", 2),
 	}
 }
 
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
 	}
 	return fallback
 }

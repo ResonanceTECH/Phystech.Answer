@@ -34,7 +34,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	user, err := s.store.CreateUser(r.Context(), model.User{
 		Name:  req.Name,
 		Email: req.Email,
-	})
+	}, "")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create user")
 		return

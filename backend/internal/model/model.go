@@ -166,6 +166,21 @@ type Citation struct {
 	PageNumber        *int    `json:"page_number,omitempty"`
 	Quote             string  `json:"quote"`
 	Score             float64 `json:"score"`
+	// StepOrder is an input-only field: on CreateAnswer it binds the
+	// citation to the step with this Order (0 = unbound).
+	StepOrder         int     `json:"-"`
+}
+
+// SearchHit is one chunk-level result of hybrid/fulltext search.
+type SearchHit struct {
+	ChunkID       string  `json:"chunkId"`
+	VersionID     string  `json:"versionId"`
+	DocumentID    string  `json:"documentId"`
+	DocumentTitle string  `json:"documentTitle"`
+	SectionNumber string  `json:"sectionNumber,omitempty"`
+	Content       string  `json:"content"`
+	LegalStatus   string  `json:"legalStatus,omitempty"`
+	Rank          float64 `json:"rank"`
 }
 
 type Job struct {

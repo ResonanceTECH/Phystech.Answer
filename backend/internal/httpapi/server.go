@@ -159,6 +159,13 @@ func (s *Server) recoverer(next http.Handler) http.Handler {
 	})
 }
 
+func orDefault(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
 // ---------- auth helpers ----------
 
 // currentUser resolves the session cookie to a user. ok=false means the

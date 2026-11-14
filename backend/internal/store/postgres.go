@@ -1037,6 +1037,53 @@ func (p *Postgres) VerifyRelation(ctx context.Context, id, status string) error 
 	return nil
 }
 
+// ---------- search ----------
+
+// SearchChunks runs Postgres full-text search (russian config) over
+// published chunks, with optional document/category filters.
+func (p *Postgres) SearchChunks(ctx context.Context, query string, docIDs, categories []string, limit int) ([]model.SearchHit, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	q := `SELECT c.id, c.version_id, d.id, d.title,
+		COALESCE(s.section_number,''), c.content, v.legal_status,
+		ts_rank(to_tsvector('russian', c.content), plainto_tsquery('russian', $1)) AS rank
+		FROM document_chunks c
+		JOIN document_versions v ON v.id = c.version_id
+		JOIN documents d ON d.id = v.document_id
+		LEFT JOIN document_sections s ON s.id = c.section_id
+		WHERE v.processing_status = 'published'
+		  AND to_tsvector('russian', c.content) @@ plainto_tsquery('russian', $1)`
+	args := []any{query}
+	n := 2
+	if len(docIDs) > 0 {
+		q += ` AND d.id = ANY($` + itoa(n) + `)`
+		args = append(args, docIDs)
+		n++
+	}
+	if len(categories) > 0 {
+		q += ` AND d.category = ANY($` + itoa(n) + `)`
+		args = append(args, categories)
+		n++
+	}
+	q += ` ORDER BY rank DESC LIMIT ` + itoa(limit)
+	rows, err := p.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.SearchHit
+	for rows.Next() {
+		var h model.SearchHit
+		if err := rows.Scan(&h.ChunkID, &h.VersionID, &h.DocumentID,
+			&h.DocumentTitle, &h.SectionNumber, &h.Content, &h.LegalStatus, &h.Rank); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
 // ---------- audit ----------
 
 func (p *Postgres) AddAuditLog(ctx context.Context, userID, entity, entityID, action, reason string, oldVal, newVal any) error {

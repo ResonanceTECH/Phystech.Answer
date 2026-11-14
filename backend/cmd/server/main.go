@@ -10,21 +10,48 @@ import (
 	"time"
 
 	"phystech-answer/backend/internal/config"
+	"phystech-answer/backend/internal/db"
 	"phystech-answer/backend/internal/httpapi"
+	"phystech-answer/backend/internal/jobs"
+	"phystech-answer/backend/internal/mlclient"
+	"phystech-answer/backend/internal/storage"
 	"phystech-answer/backend/internal/store"
 )
 
 func main() {
 	cfg := config.Load()
+	ctx := context.Background()
 
-	st := store.NewMemory()
-	if cfg.SeedDemoData {
-		st.SeedDemo()
+	if cfg.DatabaseURL == "" {
+		log.Fatal("DATABASE_URL is required (see .env.example)")
+	}
+	pool, err := db.Connect(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
+	if err != nil {
+		log.Fatalf("postgres: %v", err)
+	}
+	defer pool.Close()
+
+	if err := db.Migrate(ctx, pool); err != nil {
+		log.Fatalf("migrations: %v", err)
 	}
 
-	srv := httpapi.New(st, cfg)
+	st := store.NewPostgres(pool)
+	if cfg.SeedDemoData {
+		store.SeedDemo(ctx, st)
+	}
+
+	fs, err := storage.NewLocal(cfg.StoragePath)
+	if err != nil {
+		log.Fatalf("storage: %v", err)
+	}
+	ml := mlclient.New(cfg.MLServiceURL, time.Duration(cfg.MLTimeoutSec)*time.Second)
+
+	srv := httpapi.New(st, fs, ml, cfg)
 	// Push the document set to the ML index so /api/ask has content to search.
-	srv.SyncDocuments(context.Background())
+	srv.SyncDocuments(ctx)
+
+	// Background worker: document parsing, answer generation.
+	worker := jobs.NewRunner(st, fs, ml, cfg.WorkerConcurrency)
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
@@ -32,11 +59,13 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	go worker.Run(sigCtx)
+
 	go func() {
-		<-ctx.Done()
+		<-sigCtx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := httpSrv.Shutdown(shutdownCtx); err != nil {

@@ -33,6 +33,7 @@ type DocumentParsePayload struct {
 	DocumentID string `json:"document_id"`
 	VersionID  string `json:"version_id"`
 	Filename   string `json:"filename"`
+	StorageKey string `json:"storage_key"`
 }
 
 // AnswerGeneratePayload is enqueued when a conversation message needs an answer.
@@ -141,7 +142,13 @@ func (r *Runner) handleDocumentParse(ctx context.Context, j model.Job) error {
 		return err
 	}
 
-	rc, err := r.fs.Open(ctx, fileStorageKey(p.FileID, p.Filename))
+	storageKey := p.StorageKey
+	if storageKey == "" {
+		if f, ferr := r.st.GetSourceFile(ctx, p.FileID); ferr == nil {
+			storageKey = f.StorageKey
+		}
+	}
+	rc, err := r.fs.Open(ctx, storageKey)
 	if err != nil {
 		return err
 	}
@@ -183,27 +190,6 @@ func (r *Runner) handleDocumentParse(ctx context.Context, j model.Job) error {
 		}
 	}
 	return nil
-}
-
-// FileStorageKey builds the storage key used both at upload and parse time.
-func FileStorageKey(fileID, filename string) string {
-	return fileStorageKey(fileID, filename)
-}
-
-func fileStorageKey(fileID, filename string) string {
-	name := filepath_Base(filename)
-	return "files/" + fileID + "/" + name
-}
-
-func filepath_Base(p string) string {
-	p = strings.ReplaceAll(p, "\\", "/")
-	if i := strings.LastIndexByte(p, '/'); i >= 0 {
-		p = p[i+1:]
-	}
-	if p == "" || p == "." || p == ".." {
-		return "upload.bin"
-	}
-	return p
 }
 
 // ---------- answer.generate ----------

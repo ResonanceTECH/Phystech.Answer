@@ -77,6 +77,9 @@ type Store interface {
 	ListJobs(ctx context.Context, status string, limit int) ([]model.Job, error)
 	RetryJob(ctx context.Context, id string) error
 
+	// Search.
+	SearchChunks(ctx context.Context, query string, docIDs, categories []string, limit int) ([]model.SearchHit, error)
+
 	// Document relations.
 	ListRelations(ctx context.Context, docID string) ([]model.DocumentRelation, error)
 	CreateRelation(ctx context.Context, rel model.DocumentRelation) (model.DocumentRelation, error)
