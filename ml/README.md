@@ -166,8 +166,8 @@ question
 - Жёсткие правила в промпте: только фрагменты, никаких внешних знаний,
   не выдумывать сроки/ответственных/номера — это принцип продукта.
 - `AnalyzeQuestion` / `VerifyAnswer` / `ExtractRelationsLLM` —
-  отдельные JSON-mode вызовы для internal API (temperature 0,
- Fence/проза толерантно парсятся).
+  отдельные JSON-mode вызовы для internal API (temperature 0);
+  markdown-фенс и проза вокруг JSON толерантно вырезаются парсером.
 
 ## Индексирование (`internal/store`, `internal/chunk`)
 

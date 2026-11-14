@@ -269,6 +269,13 @@ func (s *Service) generateAnswer(ctx context.Context, question string, relevant 
 	if err != nil {
 		return model.AnswerPayload{}, err
 	}
+	if preview := []rune(res.Content); len(preview) > 0 {
+		end := 400
+		if len(preview) < end {
+			end = len(preview)
+		}
+		log.Printf("rag: llm raw (%d chars): %s", len(preview), string(preview[:end]))
+	}
 	return parseAnswerJSON(res.Content, relevant)
 }
 
@@ -445,6 +452,10 @@ func (s *Service) ExtractRelationsLLM(ctx context.Context, doc model.Document) (
 
 func buildUserPrompt(tpl, question string, relevant []store.ScoredChunk, st *store.Store) string {
 	var b strings.Builder
+	if tpl != "" {
+		b.WriteString(tpl)
+		b.WriteString("\n\n")
+	}
 	b.WriteString("Фрагменты нормативных документов:\n\n")
 	for _, sc := range relevant {
 		doc, _ := st.Doc(sc.Chunk.DocID)

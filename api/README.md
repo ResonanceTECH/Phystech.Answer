@@ -182,7 +182,8 @@ requires_review|published|archived`), tags, content, updatedAt.
 |---|---|---|
 | GET/POST/PUT/DELETE | `/api/documents[/{id}]` | CRUD документов (те же хендлеры, что v1) |
 | POST | `/api/documents/{id}/read` | Отметка прочтения |
-| GET/POST | `/api/users[/{id}/unread]` | Пользователи и непрочитанные |
+| GET/POST | `/api/users` | Список / создание пользователей |
+| GET | `/api/users/{id}/unread` | Непрочитанные документы пользователя |
 | POST | `/api/ask` | `{question}` → синхронный ответ `{answer, sources, stub}`; внутри — прокси к `ML /api/ask` + stub-фолбэк при недоступном ML |
 
 `POST /api/ask` — единственный синхронный путь вопроса для UI;
