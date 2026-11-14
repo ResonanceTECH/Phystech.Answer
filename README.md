@@ -22,7 +22,36 @@ ml/         Go (stdlib) — RAG: чанкинг, эмбеддинги, вект�
 
 ## Запуск
 
+### Docker (весь стек одной командой)
+
 ```bash
+docker compose up --build        # http://localhost:3000
+```
+
+Поднимаются четыре сервиса: **postgres** (БД, без внешнего порта),
+**ml** (:8000), **backend** (:8080) и **frontend** (nginx на :3000,
+проксирует `/api` на backend). Миграции и сид демо-данных выполняет
+backend при старте, индекс ML синхронизируется автоматически.
+
+Конфигурация — через `.env` в корне (см. `.env.example`): пароль
+PostgreSQL, LLM/эмбеддинги ml-сервиса, build-args фронта. По умолчанию
+ml ждёт Ollama на хосте (`host.docker.internal:11434`); `LLM_BASE_URL=off`
+— деградированный режим без LLM.
+
+Полезные команды:
+
+```bash
+docker compose logs -f backend   # логи сервиса
+docker compose down              # остановить
+docker compose down -v           # остановить + удалить данные (БД, индекс, файлы)
+```
+
+### Локально (для разработки)
+
+```bash
+# 0. PostgreSQL (нужен backend'у, см. DATABASE_URL в backend/.env;
+#    инициализация роли/базы — backend/db/init.sql)
+
 # 1. ML-сервис (RAG)
 cd ml && cp .env.example .env && go run ./cmd/ml     # :8000
 

@@ -1074,7 +1074,8 @@ func (p *Postgres) SearchChunks(ctx context.Context, query string, docIDs, categ
 	SELECT c.id, c.version_id, d.id, d.title,
 		COALESCE(s.section_number,''), c.content, v.legal_status,
 		ts_rank(to_tsvector('russian', lower(c.content)), q.tsq) AS rank
-		FROM document_chunks c, q
+		FROM document_chunks c
+		CROSS JOIN q
 		JOIN document_versions v ON v.id = c.version_id
 		JOIN documents d ON d.id = v.document_id
 		LEFT JOIN document_sections s ON s.id = c.section_id
