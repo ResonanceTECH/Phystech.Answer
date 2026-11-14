@@ -85,7 +85,28 @@ func (r *Runner) Run(ctx context.Context) {
 			return
 		case <-tick.C:
 		}
-		batch, err := r.st.ClaimJobs(ctx, r.concurrency)
+		// Answers: own lane, the user is waiting — never behind parsing/OCR.
+		if answers, err := r.st.ClaimJobs(ctx, r.concurrency, true); err != nil {
+			if ctx.Err() == nil {
+				log.Printf("jobs: claim answers: %v", err)
+			}
+		} else {
+			for _, j := range answers {
+				j := j
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					r.handle(ctx, j)
+				}()
+			}
+		}
+		// Parsing/OCR: claim only as many jobs as there are free slots, so
+		// queued work is not marked "running" while it waits.
+		free := cap(sem) - len(sem)
+		if free <= 0 {
+			continue
+		}
+		batch, err := r.st.ClaimJobs(ctx, free, false)
 		if err != nil {
 			if ctx.Err() == nil {
 				log.Printf("jobs: claim: %v", err)

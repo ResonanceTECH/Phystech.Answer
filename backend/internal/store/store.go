@@ -85,7 +85,7 @@ type Store interface {
 
 	// Jobs.
 	EnqueueJob(ctx context.Context, j model.Job) (model.Job, error)
-	ClaimJobs(ctx context.Context, limit int) ([]model.Job, error)
+	ClaimJobs(ctx context.Context, limit int, answers bool) ([]model.Job, error)
 	RequeueStaleJobs(ctx context.Context, olderThan time.Duration) (int64, error)
 	CompleteJob(ctx context.Context, id string) error
 	FailJob(ctx context.Context, id, errCode string, retryDelay time.Duration) error

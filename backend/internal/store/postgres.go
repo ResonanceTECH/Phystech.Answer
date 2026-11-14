@@ -1119,19 +1119,22 @@ func defaultInt(v, def int) int {
 
 // ClaimJobs atomically picks queued jobs via FOR UPDATE SKIP LOCKED and
 // marks them running.
-func (p *Postgres) ClaimJobs(ctx context.Context, limit int) ([]model.Job, error) {
+// answers selects the lane: answer.generate jobs (user is waiting) or
+// everything else (document parsing/OCR), so answers never queue behind OCR.
+func (p *Postgres) ClaimJobs(ctx context.Context, limit int, answers bool) ([]model.Job, error) {
 	rows, err := p.pool.Query(ctx, `UPDATE processing_jobs
 		SET status='running', locked_at=now(), attempts=attempts+1
 		WHERE id IN (
 			SELECT id FROM processing_jobs
 			WHERE status='queued' AND (retry_at IS NULL OR retry_at <= now())
+				AND (job_type = 'answer.generate') = $2
 			ORDER BY created_at
 			LIMIT $1
 			FOR UPDATE SKIP LOCKED
 		)
 		RETURNING id, COALESCE(document_version_id,''), job_type, status,
 			payload, progress, attempts, max_attempts, retry_at, error_code,
-			COALESCE(idempotency_key,''), created_at, completed_at`, limit)
+			COALESCE(idempotency_key,''), created_at, completed_at`, limit, answers)
 	if err != nil {
 		return nil, err
 	}
