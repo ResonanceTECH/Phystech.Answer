@@ -18,13 +18,14 @@ import (
 var (
 	// Trigger phrases; number/date are extracted separately because both
 	// «приказ № N от DD.MM.YYYY» and «приказ от DD.MM.YYYY № N» occur.
-	repealTrig   = regexp.MustCompile(`(?i)считать\s+утративш\w*\s+силу[^.\n]{0,200}?приказ\w*`)
-	amendTrig    = regexp.MustCompile(`(?i)(?:изложить|изменить|дополнить)\s+в\s+новой\s+редакции[^.\n]{0,160}?приказ\w*|внести\s+изменени\w*[^.\n]{0,160}?приказ\w*`)
-	approveRe    = regexp.MustCompile(`(?i)утвердить[^.\n]{0,120}?(?:приложени\w*|регламент\w*|порядок\w*)`)
-	genericTrig  = regexp.MustCompile(`(?i)(?:в\s+соответствии\s+с|на\s+основании|в\s+порядке)[^.\n]{0,80}?приказ\w*`)
+	// NB: Go regexp \w is ASCII-only — use [а-яё]* for Russian inflections.
+	repealTrig   = regexp.MustCompile(`(?i)считать\s+утративш[а-яё]*\s+силу[^.\n]{0,200}?приказ[а-яё]*`)
+	amendTrig    = regexp.MustCompile(`(?i)(?:изложить|изменить|дополнить)\s+в\s+новой\s+редакции[^.\n]{0,160}?приказ[а-яё]*|внести\s+изменени[а-яё]*[^.\n]{0,160}?приказ[а-яё]*`)
+	approveRe    = regexp.MustCompile(`(?i)утвердить[^.\n]{0,120}?(?:приложени[а-яё]*|регламент[а-яё]*|порядок[а-яё]*)`)
+	genericTrig  = regexp.MustCompile(`(?i)(?:в\s+соответствии\s+с|на\s+основании|в\s+порядке)[^.\n]{0,80}?приказ[а-яё]*`)
 	numRe        = regexp.MustCompile(`№\s*([0-9][0-9\-/]*[0-9А-Яа-я]?)`)
 	dateRe       = regexp.MustCompile(`(\d{2})\.(\d{2})\.(\d{4})`)
-	docNumRe     = regexp.MustCompile(`(?i)(?:приказ\w*|распоряжени\w*)\s+(?:ректора\s+МФТИ\s+)?(?:от\s+\d{2}\.\d{2}\.\d{4}\s+)?№\s*([\d\-/]+)`)
+	docNumRe     = regexp.MustCompile(`(?i)(?:приказ[а-яё]*|распоряжени[а-яё]*)\s+(?:ректора\s+МФТИ\s+)?(?:от\s+\d{2}\.\d{2}\.\d{4}\s+)?№\s*([\d\-/]+)`)
 	trigLookback = 200 // chars after the trigger to scan for «№ N» + date
 )
 

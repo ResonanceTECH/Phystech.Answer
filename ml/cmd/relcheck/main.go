@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	data, _ := os.ReadFile("data/parsed/460-1 Открытие ФЛС_приказ об изменении в приказе на открытие ФЛС.txt")
+	data, _ := os.ReadFile("data/parsed/Приказ N 794-1 от 28.03.2023.txt")
 	rels := relations.Extract(model.Document{ID: "x", Content: string(data)})
 	fmt.Printf("relations: %d\n", len(rels))
 	for _, r := range rels {
