@@ -17,5 +17,10 @@ export interface ChatMessage {
   status?: AnswerStatus
   stub?: boolean
   pending?: boolean
+  // Серверные идентификаторы для «Сохранить инструкцию»/маршрутов.
+  answerId?: string
+  runId?: string
+  warnings?: string[]
+  missingInformation?: string[]
   createdAt: number
 }

@@ -88,18 +88,16 @@ export const appTheme = createTheme({
           '&:hover': { transform: 'translateY(-1px)' },
           '&:active': { transform: 'translateY(0)' },
         },
-        containedPrimary: {
+        contained: {
           boxShadow: '0 14px 40px rgba(124, 58, 237, 0.32)',
           '&:hover': { backgroundColor: VIOLET_BRIGHT },
         },
-        outlinedPrimary: {
+        outlined: {
           background: '#1d1335',
           borderColor: BORDER_STRONG,
-          color: VIOLET_BRIGHT,
           '&:hover': {
             background: '#241840',
             borderColor: VIOLET,
-            color: '#f5f3fc',
           },
         },
       },
