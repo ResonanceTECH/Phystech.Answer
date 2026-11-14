@@ -11,27 +11,43 @@ import (
 	"phystech-answer/backend/internal/store"
 )
 
-func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
-	run, err := s.store.GetRun(r.Context(), r.PathValue("id"))
+// requireRunAccess verifies the caller owns the conversation that produced
+// the run (admins/experts may inspect any run).
+func (s *Server) requireRunAccess(w http.ResponseWriter, r *http.Request, runID string) (model.AnswerRun, bool) {
+	run, err := s.store.GetRun(r.Context(), runID)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "run not found")
-		return
+		return run, false
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to get run")
+		return run, false
+	}
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return run, false
+	}
+	if run.ConversationID != "" {
+		conv, err := s.store.GetConversation(r.Context(), run.ConversationID)
+		if err == nil && conv.UserID != user.ID && !isPrivileged(user) {
+			writeError(w, http.StatusNotFound, "run not found")
+			return run, false
+		}
+	}
+	return run, true
+}
+
+func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
+	run, ok := s.requireRunAccess(w, r, r.PathValue("id"))
+	if !ok {
 		return
 	}
 	writeJSON(w, http.StatusOK, run)
 }
 
 func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {
-	run, err := s.store.GetRun(r.Context(), r.PathValue("id"))
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "run not found")
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to get run")
+	run, ok := s.requireRunAccess(w, r, r.PathValue("id"))
+	if !ok {
 		return
 	}
 	if run.Status == "completed" || run.Status == "failed" || run.Status == "cancelled" {
@@ -51,8 +67,7 @@ func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {
 // in run_events, so a client can reconnect and resume via Last-Event-ID.
 func (s *Server) runEvents(w http.ResponseWriter, r *http.Request) {
 	runID := r.PathValue("id")
-	if _, err := s.store.GetRun(r.Context(), runID); errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "run not found")
+	if _, ok := s.requireRunAccess(w, r, runID); !ok {
 		return
 	}
 
@@ -133,7 +148,11 @@ func writeSSE(w http.ResponseWriter, e model.RunEvent) {
 
 // getRunAnswer returns the verified answer produced by a run.
 func (s *Server) getRunAnswer(w http.ResponseWriter, r *http.Request) {
-	answer, steps, citations, err := s.store.GetAnswerByRun(r.Context(), r.PathValue("id"))
+	run, ok := s.requireRunAccess(w, r, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	answer, steps, citations, err := s.store.GetAnswerByRun(r.Context(), run.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "answer not found")
 		return

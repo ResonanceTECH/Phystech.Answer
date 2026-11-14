@@ -131,8 +131,8 @@ legacy-алиасах backend):
 - `POST /api/ask` — синхронный вопрос (чат, `sendMessage`).
 - `GET/POST/PUT/DELETE /api/documents*` — каталог и CRUD документов
   (включая админ-страницы).
-- `GET /api/users`, `POST /api/users/{id}/unread` — список и метки
-  прочитанного.
+- `GET /api/users`, `GET /api/users/{id}/unread` — список
+  пользователей и непрочитанные документы.
 - `/api/v1/auth/{login,register,logout,me}`, `PATCH /api/v1/users/me`,
   `GET /api/v1/departments` — auth и профиль.
 

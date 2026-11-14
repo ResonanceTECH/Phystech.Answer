@@ -16,8 +16,9 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      # для локальных утилит (psql, DBeaver, cmd/ingest); только localhost
-      - "127.0.0.1:${DB_PORT:-5432}:5432"
+      # для локальных утилит (psql, DBeaver, cmd/ingest); только localhost.
+      # 5433 по умолчанию, т.к. 5432 на хосте может занимать системный PostgreSQL.
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fiztech_admin -d fiztech_answer"]
       interval: 5s
@@ -111,7 +112,8 @@ services:
       # Origin фронтенда (cookie-сессии не работают с '*').
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
       ML_SERVICE_URL: http://ml:8000
-      ML_TIMEOUT_SECONDS: "300"
+      # Генерация на 4B-модели может идти минуты; держим ниже WriteTimeout ml (360s).
+      ML_TIMEOUT_SECONDS: ${ML_TIMEOUT_SECONDS:-300}
       DATABASE_URL: postgresql://fiztech_admin:${POSTGRES_PASSWORD:-fiztech_dev_hack}@postgres:5432/fiztech_answer
       STORAGE_PATH: /data/files
       # База знаний: импортируется при старте (повторы по SHA-256 пропускаются),
@@ -159,7 +161,8 @@ services:
         VITE_DEMO_MODE: ${VITE_DEMO_MODE:-true}
         VITE_ENABLE_ADMIN: ${VITE_ENABLE_ADMIN:-true}
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      # APP_PORT (или FRONTEND_PORT) позволяет опубликовать фронт на 80 при деплое.
+      - "${APP_PORT:-${FRONTEND_PORT:-3000}}:80"
     depends_on:
       backend: { condition: service_healthy }
     restart: unless-stopped

@@ -17,6 +17,8 @@
 - [Примеры работы (use cases)](#примеры-работы-use-cases)
 - [Настройки и переменные окружения](#настройки-и-переменные-окружения)
 - [API](#api)
+- [Документация по компонентам](#документация-по-компонентам)
+- [Деплой на сервер](#деплой-на-сервер)
 - [Ограничения и план развития](#ограничения-и-план-развития)
 
 ---
@@ -50,7 +52,7 @@ docker compose up -d --build  # первый запуск: 10–20 минут (�
 | **Веб-интерфейс** | http://localhost:3000 — вход: демо-кнопки «Сотрудник» / «Администратор» |
 | API бэкенда | http://localhost:8080/api/health · спецификация — `api/openapi.yaml` |
 | ML-сервис | http://localhost:8000/health — число документов, фрагментов, векторов и конфигурация конвейера |
-| PostgreSQL | `localhost:5432`, БД `fiztech_answer`, пользователь `fiztech_admin`, пароль `fiztech_dev_hack` (или `POSTGRES_PASSWORD`) |
+| PostgreSQL | `localhost:5433`, БД `fiztech_answer`, пользователь `fiztech_admin`, пароль `fiztech_dev_hack` (или `POSTGRES_PASSWORD`) |
 
 Демо-учётные записи: сотрудник `ivan` / `ivan123`, администратор `admin` / `admin123`.
 Новые сотрудники регистрируются сами (`/auth/register`).
@@ -269,9 +271,7 @@ docker compose exec ml /eval -questions /data/questions.jsonl -stage e2e -config
 Основным выбран H2O-конвейер: он медленнее, но корректно определил статус
 всех 39 вопросов и заметно лучше подтвердил ответы источниками. Полные отчёты:
 [`eval/results-e2e-ours.md`](eval/results-e2e-ours.md) и
-[`eval/results-e2e-darya.md`](eval/results-e2e-darya.md). После усиления
-пошагового формата и обработки составных вопросов выполняется контрольный
-замер в `eval/results-e2e-ours-rerun.md`.
+[`eval/results-e2e-darya.md`](eval/results-e2e-darya.md).
 
 **Выводы:**
 - BM25 с русским стеммером — сильный baseline: термины регламентов
@@ -339,7 +339,7 @@ docker compose exec ml /eval -questions /data/questions.jsonl -stage e2e -config
 | `RAG_AMENDMENTS` | `true` | подтягивать изменяющие акты |
 | `RAG_TOP_K` | `6` | фрагментов в контексте генерации |
 | `RAG_MIN_VECTOR` / `RAG_MIN_BM25` | `0.47` / `10` | порог доказательств до реранкинга (откалиброван на наборе вопросов) |
-| `FRONTEND_PORT`, `API_PORT`, `ML_PORT`, `DB_PORT` | 3000, 8080, 8000, 5432 | порты на хосте |
+| `FRONTEND_PORT` (`APP_PORT`), `API_PORT`, `ML_PORT`, `DB_PORT` | 3000, 8080, 8000, 5433 | порты на хосте |
 
 **GPU / Apple Silicon.** Ollama в Docker на macOS работает только на CPU.
 Для ускорения запустите Ollama на хосте (`ollama serve`, `ollama pull qwen3.5:4b bge-m3`)
@@ -380,6 +380,32 @@ cd frontend && npm install && npm run dev                      # :5173
 `status`: `answered` — ответ подтверждён ссылками; `partial` — ответ неполный
 (в `missing` — чего не хватает); `not_found` — в базе нет информации;
 `invalid` — запрос не распознан.
+
+Все эндпоинты, кроме входа/регистрации, требуют сессии; изменение базы
+знаний — только `admin`/`expert`. Полный каталог — [api/README.md](api/README.md),
+спецификация — [api/openapi.yaml](api/openapi.yaml).
+
+---
+
+## Документация по компонентам
+
+| Документ | Содержание |
+|---|---|
+| [backend/README.md](backend/README.md) | Go-бэкенд: пакеты, PostgreSQL и миграции, очередь задач, auth/роли, поиск, интеграция с ML, файлы |
+| [frontend/README.md](frontend/README.md) | React-приложение: FSD-структура, маршруты и guard'ы, сценарии чата, документов и админки |
+| [ml/README.md](ml/README.md) | RAG-конвейер: гибридный поиск, H2O-реранкинг, декомпозиция, изменяющие акты, генерация и проверка цитат |
+| [api/README.md](api/README.md) | Каталог HTTP API: auth-модель, эндпоинты, SSE-протокол runs, ошибки |
+
+---
+
+## Деплой на сервер
+
+Пуш в `main` запускает `.github/workflows/deploy.yml`: по SSH на сервере
+выполняются `git pull --ff-only` и `docker compose up -d --build`.
+Секреты: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PORT`.
+В `.env` на сервере обычно задают `APP_PORT=80`; остальные порты слушают
+только `127.0.0.1`. Первый запуск скачивает модели (~6 ГБ: qwen3.5:4b,
+bge-m3 в Ollama и H2O-Lightning-4B в volume `llama-cache`).
 
 ---
 

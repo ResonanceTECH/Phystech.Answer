@@ -19,6 +19,10 @@ type searchRequest struct {
 // search is the catalog/fragment search endpoint (spec §12). Full-text
 // search over published chunks; semantic search lives in the ML service.
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
 	var req searchRequest
 	if !decodeJSON(w, r, &req) {
 		return
@@ -35,10 +39,9 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, _ := s.currentUser(r)
 	// Access gate (spec §13): restricted docs are visible only to
 	// admin/expert; public/internal are visible to everyone.
-	privileged := user.Role == "admin" || user.Role == "expert"
+	privileged := isPrivileged(user)
 	visible := hits[:0]
 	for _, h := range hits {
 		if !privileged && h.AccessLevel == "restricted" {

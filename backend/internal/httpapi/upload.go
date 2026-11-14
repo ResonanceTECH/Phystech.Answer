@@ -309,6 +309,9 @@ func mimeByExt(name string) string {
 // ---------- versions / structure / files ----------
 
 func (s *Server) listVersions(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDocAccess(w, r, r.PathValue("id")) {
+		return
+	}
 	vers, err := s.store.ListVersions(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list versions")
@@ -321,6 +324,9 @@ func (s *Server) listVersions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listSections(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDocAccess(w, r, r.PathValue("id")) {
+		return
+	}
 	vers, err := s.store.ListVersions(r.Context(), r.PathValue("id"))
 	if err != nil || len(vers) == 0 {
 		writeError(w, http.StatusNotFound, "document not found")
@@ -336,6 +342,9 @@ func (s *Server) listSections(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listChunks(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
 	chunks, err := s.store.ListChunks(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list chunks")
@@ -345,6 +354,9 @@ func (s *Server) listChunks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listRelations(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDocAccess(w, r, r.PathValue("id")) {
+		return
+	}
 	rels, err := s.store.ListRelations(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list relations")
@@ -357,6 +369,9 @@ func (s *Server) listRelations(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listAttachments(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDocAccess(w, r, r.PathValue("id")) {
+		return
+	}
 	rels, err := s.store.ListRelations(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list attachments")
@@ -383,6 +398,9 @@ func latestPublishedVersion(vers []model.DocumentVersion) model.DocumentVersion 
 // getDocumentContent returns the versioned content with structure — the
 // machine-readable view used by citations.
 func (s *Server) getDocumentContent(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDocAccess(w, r, r.PathValue("id")) {
+		return
+	}
 	doc, err := s.store.GetDocument(r.Context(), r.PathValue("id"))
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "document not found")
@@ -395,8 +413,37 @@ func (s *Server) getDocumentContent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, doc)
 }
 
+// requireDocAccess admits a signed-in user to a document's sub-resources:
+// restricted, hidden and archived documents are visible to admin/expert only
+// (same rules as getDocument). Unknown documents fall through to the handler.
+func (s *Server) requireDocAccess(w http.ResponseWriter, r *http.Request, docID string) bool {
+	user, ok := s.requireUser(w, r)
+	if !ok {
+		return false
+	}
+	if isPrivileged(user) {
+		return true
+	}
+	doc, err := s.store.GetDocument(r.Context(), docID)
+	if errors.Is(err, store.ErrNotFound) {
+		return true
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load document")
+		return false
+	}
+	if doc.AccessLevel == "restricted" || (doc.Visibility != "" && doc.Visibility != "active") {
+		writeError(w, http.StatusNotFound, "document not found")
+		return false
+	}
+	return true
+}
+
 // getDocumentFile streams the original uploaded file of the current version.
 func (s *Server) getDocumentFile(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDocAccess(w, r, r.PathValue("id")) {
+		return
+	}
 	vers, err := s.store.ListVersions(r.Context(), r.PathValue("id"))
 	if err != nil || len(vers) == 0 {
 		writeError(w, http.StatusNotFound, "document not found")
@@ -411,6 +458,9 @@ func (s *Server) getDocumentFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getSourceFile(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
 	s.serveSourceFile(w, r, r.PathValue("id"))
 }
 

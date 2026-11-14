@@ -29,6 +29,28 @@ func (s *Server) answerFeedback(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "ok"})
 }
 
+// requireAnswerAccess verifies the answer belongs to a conversation owned by
+// the caller (admins/experts may reference any answer).
+func (s *Server) requireAnswerAccess(w http.ResponseWriter, r *http.Request, u model.User, answerID string) bool {
+	answer, err := s.store.GetAnswer(r.Context(), answerID)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "answer not found")
+		return false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load answer")
+		return false
+	}
+	if answer.ConversationID != "" {
+		conv, err := s.store.GetConversation(r.Context(), answer.ConversationID)
+		if err == nil && conv.UserID != u.ID && u.Role != "admin" && u.Role != "expert" {
+			writeError(w, http.StatusNotFound, "answer not found")
+			return false
+		}
+	}
+	return true
+}
+
 // POST /api/v1/saved-instructions — сохранить проверенный ответ как инструкцию.
 func (s *Server) createSavedInstruction(w http.ResponseWriter, r *http.Request) {
 	u, ok := s.requireUser(w, r)
@@ -44,6 +66,9 @@ func (s *Server) createSavedInstruction(w http.ResponseWriter, r *http.Request) 
 	}
 	if in.AnswerID == "" {
 		writeError(w, http.StatusBadRequest, "answerId is required")
+		return
+	}
+	if !s.requireAnswerAccess(w, r, u, in.AnswerID) {
 		return
 	}
 	si, err := s.store.CreateSavedInstruction(r.Context(), model.SavedInstruction{
@@ -92,6 +117,9 @@ func (s *Server) createActionRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.AnswerID == "" {
 		writeError(w, http.StatusBadRequest, "answerId is required")
+		return
+	}
+	if !s.requireAnswerAccess(w, r, u, in.AnswerID) {
 		return
 	}
 	steps := make([]model.ActionRouteStep, 0, len(in.Steps))
