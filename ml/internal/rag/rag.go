@@ -91,6 +91,20 @@ func (s *Service) SyncDocuments(ctx context.Context, docs []model.Document) erro
 
 func (s *Service) ListDocuments() []model.Document { return s.st.ListDocuments() }
 
+// RebuildRelations re-extracts relation edges for every document currently
+// in the store. Called at startup — relations are derived data and aren't
+// persisted in index.json.
+func (s *Service) RebuildRelations() {
+	docs := s.st.ListDocuments()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.relations = map[string][]model.Relation{}
+	for _, d := range docs {
+		rels := relations.Extract(d)
+		s.relations[d.ID] = relations.ResolveTargets(rels, docs)
+	}
+}
+
 // RelationsFor returns extracted relations of a document.
 func (s *Service) RelationsFor(docID string) []model.Relation {
 	s.mu.RLock()

@@ -11,8 +11,9 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       # проброшен для локальных утилит (cmd/ingest, psql);
-      # 5433, т.к. 5432 на хосте может занимать системный PostgreSQL
-      - "5433:5432"
+      # 5433, т.к. 5432 на хосте может занимать системный PostgreSQL.
+      # 127.0.0.1 — чтобы БД не была доступна снаружи при деплое на сервер.
+      - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fiztech_admin -d fiztech_answer"]
       interval: 5s
@@ -47,7 +48,7 @@ services:
     volumes:
       - ml-data:/data
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8000/health || exit 1"]
       interval: 5s
@@ -60,8 +61,8 @@ services:
   mailpit:
     image: axllent/mailpit:latest
     ports:
-      - "8025:8025"
-      - "1025:1025"
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
     restart: unless-stopped
 
   backend:
@@ -86,7 +87,7 @@ services:
     volumes:
       - backend-data:/data
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,7 +108,8 @@ services:
         VITE_DEMO_MODE: ${VITE_DEMO_MODE:-true}
         VITE_ENABLE_ADMIN: ${VITE_ENABLE_ADMIN:-true}
     ports:
-      - "3000:80"
+      # APP_PORT позволяет опубликовать фронт на 80 при деплое (в .env).
+      - "${APP_PORT:-3000}:80"
     depends_on:
       backend:
         condition: service_healthy

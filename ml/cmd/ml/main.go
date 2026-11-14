@@ -47,6 +47,8 @@ func main() {
 	}
 
 	svc := rag.New(st, em, ch, rr, cfg)
+	// Relations are recomputed from the persisted corpus on every boot.
+	svc.RebuildRelations()
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
