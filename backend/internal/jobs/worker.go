@@ -230,7 +230,8 @@ func (r *Runner) handleAnswerGenerate(ctx context.Context, j model.Job) error {
 	r.emit(ctx, p.RunID, "verification.started", map[string]any{"run_id": p.RunID})
 
 	answer, steps, citations, msg := r.buildAnswer(ctx, p, res)
-	if _, err := r.st.CreateAnswer(ctx, answer, steps, citations); err != nil {
+	saved, err := r.st.CreateAnswer(ctx, answer, steps, citations)
+	if err != nil {
 		return err
 	}
 	if _, err := r.st.CreateMessage(ctx, model.Message{
@@ -239,7 +240,7 @@ func (r *Runner) handleAnswerGenerate(ctx context.Context, j model.Job) error {
 		return err
 	}
 
-	r.emit(ctx, p.RunID, "answer.completed", map[string]any{"answer_id": answer.ID})
+	r.emit(ctx, p.RunID, "answer.completed", map[string]any{"answer_id": saved.ID})
 	return r.st.SetRunStatus(ctx, p.RunID, "completed", "")
 }
 
@@ -364,7 +365,8 @@ func (r *Runner) resolveCitationRefs(ctx context.Context, cit *model.Citation) {
 	}
 	cit.DocumentVersionID = versionID
 
-	if cit.SectionNumber == "" {
+	want := strings.TrimRight(cit.SectionNumber, ".")
+	if want == "" {
 		return
 	}
 	chunks, err := r.st.ListChunks(ctx, versionID)
@@ -372,7 +374,7 @@ func (r *Runner) resolveCitationRefs(ctx context.Context, cit *model.Citation) {
 		return
 	}
 	for _, c := range chunks {
-		if c.SectionNumber == cit.SectionNumber {
+		if strings.TrimRight(c.SectionNumber, ".") == want {
 			cit.ChunkID = c.ID
 			return
 		}
