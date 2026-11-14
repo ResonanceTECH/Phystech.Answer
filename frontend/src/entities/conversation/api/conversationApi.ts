@@ -135,52 +135,52 @@ export function toAnswerFields(ans: ServerAnswer): {
 const orEmpty = <T>(p: Promise<T[]>): Promise<T[]> => p.then((r) => r ?? []);
 
 export const conversationApi = {
-  list: () => orEmpty(api.get<ServerConversation[]>('/conversations')),
+  list: () => orEmpty(api.get<ServerConversation[]>('/v1/conversations')),
 
   create: (input: { title?: string; message?: string }) =>
     api.post<
       | ServerConversation
       | { conversation: ServerConversation; message_id: string; run_id: string; status: string }
-    >('/conversations', input),
+    >('/v1/conversations', input),
 
   get: (id: string) =>
     api.get<{ conversation: ServerConversation; messages: ServerMessage[] }>(
-      `/conversations/${id}`,
+      `/v1/conversations/${id}`,
     ),
 
   rename: (id: string, title: string) =>
-    api.patch<ServerConversation>(`/conversations/${id}`, { title }),
+    api.patch<ServerConversation>(`/v1/conversations/${id}`, { title }),
 
-  remove: (id: string) => api.delete<void>(`/conversations/${id}`),
+  remove: (id: string) => api.delete<void>(`/v1/conversations/${id}`),
 
   postMessage: (id: string, content: string) =>
     api.post<{ message_id: string; run_id: string; status: string }>(
-      `/conversations/${id}/messages`,
+      `/v1/conversations/${id}/messages`,
       { content },
     ),
 
-  getRun: (id: string) => api.get<ServerRun>(`/runs/${id}`),
+  getRun: (id: string) => api.get<ServerRun>(`/v1/runs/${id}`),
 
-  getRunAnswer: (id: string) => api.get<ServerAnswer>(`/runs/${id}/answer`),
+  getRunAnswer: (id: string) => api.get<ServerAnswer>(`/v1/runs/${id}/answer`),
 
-  getAnswer: (id: string) => api.get<ServerAnswer>(`/answers/${id}`),
+  getAnswer: (id: string) => api.get<ServerAnswer>(`/v1/answers/${id}`),
 };
 
 export const savedInstructionApi = {
-  list: () => orEmpty(api.get<ServerSavedInstruction[]>('/saved-instructions')),
+  list: () => orEmpty(api.get<ServerSavedInstruction[]>('/v1/saved-instructions')),
   create: (answerId: string, title: string) =>
-    api.post<ServerSavedInstruction>('/saved-instructions', { answerId, title }),
-  remove: (id: string) => api.delete<void>(`/saved-instructions/${id}`),
+    api.post<ServerSavedInstruction>('/v1/saved-instructions', { answerId, title }),
+  remove: (id: string) => api.delete<void>(`/v1/saved-instructions/${id}`),
 };
 
 export const actionRouteApi = {
-  list: () => orEmpty(api.get<ServerActionRoute[]>('/action-routes')),
+  list: () => orEmpty(api.get<ServerActionRoute[]>('/v1/action-routes')),
   create: (answerId: string, title: string) =>
-    api.post<ServerActionRoute>('/action-routes', { answerId, title }),
+    api.post<ServerActionRoute>('/v1/action-routes', { answerId, title }),
   get: (id: string) =>
     api.get<{ route: ServerActionRoute; steps: ServerActionRouteStep[] }>(
-      `/action-routes/${id}`,
+      `/v1/action-routes/${id}`,
     ),
   setStepDone: (routeId: string, stepId: string, done: boolean) =>
-    api.patch<{ status: string }>(`/action-routes/${routeId}/steps/${stepId}`, { done }),
+    api.patch<{ status: string }>(`/v1/action-routes/${routeId}/steps/${stepId}`, { done }),
 };
