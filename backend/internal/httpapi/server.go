@@ -15,6 +15,7 @@ type Server struct {
 	mlURL     string
 	corsAllow string
 	client    *http.Client
+	mlClient  *http.Client
 }
 
 func New(st store.Store, cfg config.Config) *Server {
@@ -23,6 +24,7 @@ func New(st store.Store, cfg config.Config) *Server {
 		mlURL:     cfg.MLServiceURL,
 		corsAllow: cfg.CORSOrigin,
 		client:    &http.Client{Timeout: 60 * time.Second},
+		mlClient:  &http.Client{Timeout: 15 * time.Second},
 	}
 }
 

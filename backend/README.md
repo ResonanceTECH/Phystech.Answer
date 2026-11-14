@@ -1,6 +1,7 @@
 # Backend
 
-Go-бэкенд Phystech.Answer — навигатор сотрудника по непрочитанным регламентам.
+Go-бэкенд Phystech.Answer — API документов и сотрудников, прокси вопросов
+к ML-сервису (RAG-ассистент), синхронизация индекса.
 Только стандартная библиотека, без внешних зависимостей.
 
 ## Запуск
@@ -41,14 +42,20 @@ internal/httpapi/   — роутер, middleware (CORS, лог, recover), хен
 | GET    | /api/users/{id}/unread      | непрочитанные регламенты сотрудника         |
 | POST   | /api/ask                    | вопрос к регламентам `{question}` → прокси к ML |
 
-`POST /api/ask` проксирует запрос на `${ML_SERVICE_URL}/ask` (формат
-`{question}` → `{answer, sources}`). Пока ML-сервис не поднят, возвращает
-заглушку с `"stub": true`.
+`POST /api/ask` проксирует запрос на `${ML_SERVICE_URL}/api/ask` и возвращает
+`{answer, sources: [{documentId, title, section, excerpt, score}], stub}`.
+При недоступном ML-сервисе возвращает заглушку с `"stub": true`.
+
+## Синхронизация с ML-сервисом
+
+При старте backend отправляет все документы в ML (`POST /api/sync`),
+а при создании/обновлении/удалении документа — точечные `PUT`/`DELETE`
+`/api/documents/{id}`. Ошибки синка логируются, но не ломают API.
 
 ## Проверка
 
 ```bash
 curl localhost:8080/api/health
 curl localhost:8080/api/documents
-curl -X POST localhost:8080/api/ask -d '{"question":"Когда обед?"}' -H 'Content-Type: application/json'
+curl -X POST localhost:8080/api/ask -d '{"question":"Как открыть ФЛС?"}' -H 'Content-Type: application/json'
 ```

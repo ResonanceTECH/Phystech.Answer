@@ -13,17 +13,25 @@ type askRequest struct {
 	UserID   string `json:"userId,omitempty"`
 }
 
-type askResponse struct {
-	Answer  string   `json:"answer"`
-	Sources []string `json:"sources"`
-	// Stub is true when the ML service was unreachable and the answer is a fallback.
-	Stub bool `json:"stub"`
+// askSource mirrors the citation format returned by the ML service.
+type askSource struct {
+	DocumentID string  `json:"documentId"`
+	Title      string  `json:"title"`
+	Section    string  `json:"section,omitempty"`
+	Excerpt    string  `json:"excerpt"`
+	Score      float64 `json:"score"`
 }
 
-// ask forwards the question to the ML service (POST {ML_SERVICE_URL}/ask with
-// {"question": ...}, expecting {"answer": ..., "sources": [...]}). While the ML
-// service is offline it returns a stub answer with stub=true so the frontend
-// can be developed independently.
+type askResponse struct {
+	Answer  string      `json:"answer"`
+	Sources []askSource `json:"sources"`
+	// Stub is true when the ML service was unreachable and the answer is a fallback.
+	Stub bool `json:"stub,omitempty"`
+}
+
+// ask forwards the question to the ML service (POST {ML_SERVICE_URL}/api/ask
+// with {"question": ...}). While the ML service is offline it returns a stub
+// answer with stub=true so the frontend can be developed independently.
 func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 	var req askRequest
 	if !decodeJSON(w, r, &req) {
@@ -40,7 +48,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to encode question")
 		return
 	}
-	mlReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, s.mlURL+"/ask", bytes.NewReader(body))
+	mlReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, s.mlURL+"/api/ask", bytes.NewReader(body))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "invalid ML service URL")
 		return
@@ -67,13 +75,16 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 		s.writeStubAnswer(w)
 		return
 	}
+	if ml.Sources == nil {
+		ml.Sources = []askSource{}
+	}
 	writeJSON(w, http.StatusOK, ml)
 }
 
 func (s *Server) writeStubAnswer(w http.ResponseWriter) {
 	writeJSON(w, http.StatusOK, askResponse{
 		Answer:  "ML-сервис пока недоступен, это ответ-заглушка.",
-		Sources: []string{},
+		Sources: []askSource{},
 		Stub:    true,
 	})
 }

@@ -70,6 +70,7 @@ func (s *Server) createDocument(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to create document")
 		return
 	}
+	s.indexDocument(r.Context(), doc)
 	writeJSON(w, http.StatusCreated, doc)
 }
 
@@ -110,6 +111,7 @@ func (s *Server) updateDocument(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to update document")
 		return
 	}
+	s.indexDocument(r.Context(), doc)
 	writeJSON(w, http.StatusOK, doc)
 }
 
@@ -123,6 +125,7 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete document")
 		return
 	}
+	s.removeFromIndex(r.Context(), r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
