@@ -19,8 +19,9 @@ function FooterLink({ href, label }: { href: string; label: string }) {
   return <Link to={href}>{label}</Link>
 }
 
+const CURRENT_YEAR = new Date().getFullYear()
+
 export function LandingFooter() {
-  const year = new Date().getFullYear()
 
   return (
     <footer className="pl-footer">
@@ -57,13 +58,30 @@ export function LandingFooter() {
         </div>
 
         <div className="pl-footer__bottom">
-          <p>{`© ${year} ${landingFooter.brand}`}</p>
+          <p>{`© ${CURRENT_YEAR} ${landingFooter.brand}`}</p>
           <p>{landingFooter.brandTagline}</p>
         </div>
 
-        <p className="pl-footer__mark" aria-hidden>
-          Физтех.Ответ
-        </p>
+        <div className="pl-footer__mark" aria-hidden>
+          <svg viewBox="0 0 1200 150" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <linearGradient id="pl-footer-mark-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgba(167,139,250,0.34)" />
+                <stop offset="100%" stopColor="rgba(167,139,250,0.03)" />
+              </linearGradient>
+            </defs>
+            <text
+              x="600"
+              y="118"
+              textAnchor="middle"
+              textLength="1150"
+              lengthAdjust="spacingAndGlyphs"
+              fill="url(#pl-footer-mark-grad)"
+            >
+              ФИЗТЕХ.ОТВЕТ
+            </text>
+          </svg>
+        </div>
       </div>
     </footer>
   )

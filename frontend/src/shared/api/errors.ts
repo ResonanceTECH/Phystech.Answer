@@ -1,5 +1,6 @@
 export class ApiError extends Error {
   status: number
+  code?: string
   body?: unknown
 
   constructor(status: number, message: string, body?: unknown) {
@@ -7,6 +8,10 @@ export class ApiError extends Error {
     this.name = 'ApiError'
     this.status = status
     this.body = body
+    if (body && typeof body === 'object' && 'error' in body) {
+      const e = (body as { error?: { code?: string } }).error
+      if (e?.code) this.code = e.code
+    }
   }
 }
 

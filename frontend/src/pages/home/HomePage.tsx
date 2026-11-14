@@ -15,6 +15,7 @@ import {
 import { useState, type FormEvent } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import { useConversationStore } from '@/entities/conversation'
+import { useAuthStore } from '@/entities/user'
 import { paths } from '@/app/router/routePaths'
 import { formatDate } from '@/shared/lib'
 
@@ -63,6 +64,7 @@ export function HomePage() {
   const [question, setQuestion] = useState('')
   const navigate = useNavigate()
   const conversations = useConversationStore((s) => s.conversations)
+  const user = useAuthStore((s) => s.user)
 
   const ask = (text: string) => {
     const q = text.trim()
@@ -81,7 +83,9 @@ export function HomePage() {
     <Box sx={{ maxWidth: 960, mx: 'auto' }}>
       <Box sx={{ textAlign: 'center', py: { xs: 4, md: 6 } }}>
         <Typography variant="h4" gutterBottom>
-          Задайте вопрос — получите порядок действий
+          {user?.firstName
+            ? `${user.firstName}, задайте вопрос — получите порядок действий`
+            : 'Задайте вопрос — получите порядок действий'}
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 620, mx: 'auto' }}>
           Ассистент найдёт нужные регламенты МФТИ, соберёт инструкцию
