@@ -189,7 +189,50 @@ func (r *Runner) handleDocumentParse(ctx context.Context, j model.Job) error {
 			}
 		}
 	}
+	r.detectRelations(ctx, p.VersionID, text)
 	return nil
+}
+
+// ---------- нормативные связи (спека §11) ----------
+
+// «Считать утратившим силу приказ № 1465-1», «отменяется приказ № 12»,
+// «внести изменения в приказ № 555» — слабый эвристический детектор.
+// Кандидаты уходят на проверку (review_status='pending'), эксперт
+// подтверждает их через /api/v1/admin/document-relations/{id}/verify.
+var relationPatterns = []struct {
+	re     *regexp.Regexp
+	relTyp string
+}{
+	{regexp.MustCompile(`(?i)(?:отмен\w+|утративш\w+\s+силу)[^.]{0,160}?приказ\w*\s*№?\s*(\d{3,6}(?:-\d+)?)`), "repeals"},
+	{regexp.MustCompile(`(?i)внести\s+изменен\w+[^.]{0,160}?приказ\w*\s*№?\s*(\d{3,6}(?:-\d+)?)`), "amends"},
+}
+
+func (r *Runner) detectRelations(ctx context.Context, versionID, text string) {
+	chunks, err := r.st.ListChunks(ctx, versionID)
+	if err != nil {
+		return
+	}
+	chunkBySection := map[string]string{}
+	for _, c := range chunks {
+		chunkBySection[strings.TrimRight(c.SectionNumber, ".")] = c.ID
+	}
+	for _, rp := range relationPatterns {
+		for _, m := range rp.re.FindAllStringSubmatchIndex(text, -1) {
+			num := text[m[2]:m[3]]
+			target, err := r.st.FindDocumentByNumber(ctx, num)
+			if err != nil {
+				continue // документа нет в базе — спека требует не выдумывать
+			}
+			if _, err := r.st.CreateRelation(ctx, model.DocumentRelation{
+				SourceVersionID:  versionID,
+				TargetDocumentID: target.ID,
+				RelationType:     rp.relTyp,
+				ReviewStatus:     "pending",
+			}); err != nil {
+				log.Printf("jobs: create relation %s->%s: %v", versionID, target.ID, err)
+			}
+		}
+	}
 }
 
 // ---------- answer.generate ----------

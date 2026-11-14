@@ -185,6 +185,36 @@ type SearchHit struct {
 	Rank          float64 `json:"rank"`
 }
 
+// SavedInstruction is a bookmarked verified answer.
+type SavedInstruction struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"userId"`
+	AnswerID  string    `json:"answerId"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// ActionRoute is a user's personal checklist built from an answer (§24).
+type ActionRoute struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"userId"`
+	AnswerID  string    `json:"answerId"`
+	Title     string    `json:"title"`
+	Stale     bool      `json:"stale"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type ActionRouteStep struct {
+	ID        string     `json:"id"`
+	RouteID   string     `json:"routeId"`
+	StepID    string     `json:"stepId,omitempty"`
+	Order     int        `json:"order"`
+	Title     string     `json:"title"`
+	Done      bool       `json:"done"`
+	DoneAt    *time.Time `json:"doneAt,omitempty"`
+}
+
 type Job struct {
 	ID                string          `json:"id"`
 	DocumentVersionID string          `json:"documentVersionId,omitempty"`
