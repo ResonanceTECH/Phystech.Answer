@@ -44,10 +44,13 @@ ML-сервис имеет собственный API (порт 8000, `/api/docu
 - **Требуют сессию**: `PATCH /users/me`, `saved-instructions`,
   `action-routes*`, весь `/admin/*`.
 - **Требуют admin/expert**: все `/api/v1/admin/*`.
-- **Открытые**: health, auth-эндпоинты входа/регистрации, каталог
-  документов, conversations/messages, runs, search, `/api/ask`,
-  список пользователей. `currentUser` опционален — анонимные
-  запросы обрабатываются; это осознанное состояние прототипа.
+- **Открытые**: health, auth-эндпоинты входа/регистрации, весь
+  documents API (включая `POST/PUT/DELETE`!), conversations/messages,
+  runs, search, `/api/ask`, `/api/v1/users` и legacy `/api/users`.
+  `currentUser` опционален — анонимные запросы обрабатываются.
+  Это осознанное состояние прототипа; для продакшена мутации
+  документов/пользователей и диалоги стоит закрыть сессией и
+  admin-ролью.
 
 ## Формат ошибок
 
@@ -55,10 +58,12 @@ ML-сервис имеет собственный API (порт 8000, `/api/docu
 { "error": { "code": "VALIDATION_ERROR", "message": "...", "retryable": false } }
 ```
 
-`retryable: true` выставляется для 5xx. Типовые коды:
+`retryable: true` выставляется для status ≥ 500. Машинные коды —
 `VALIDATION_ERROR` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403),
-`NOT_FOUND` (404), `CONFLICT` (409), `EMAIL_ALREADY_EXISTS` (409),
-`INVALID_CREDENTIALS` (401), `RATE_LIMITED` (429), `INTERNAL_ERROR` (500).
+`EMAIL_ALREADY_EXISTS` (409), `INVALID_CREDENTIALS` (401),
+`RATE_LIMITED` (429), `INTERNAL_ERROR` (500) — используются на
+auth-эндпоинтах и origin-check; остальные хендлеры возвращают
+`http.StatusText` («Not Found», «Bad Request»…) в поле `code`.
 
 ## Эндпоинты
 
@@ -90,7 +95,7 @@ requires_review|published|archived`), tags, content, updatedAt.
 
 | Метод | Путь | Описание |
 |---|---|---|
-| GET | `/api/v1/documents` | Список документов (query: фильтры) |
+| GET | `/api/v1/documents` | Список документов; `?userId=` добавляет флаги прочитанного (`read`, `readAt`) |
 | POST | `/api/v1/documents` | Создать документ + version 1 → job parse |
 | GET | `/api/v1/documents/{id}` | Карточка документа |
 | PUT | `/api/v1/documents/{id}` | Обновить метаданные/контент → новая версия |

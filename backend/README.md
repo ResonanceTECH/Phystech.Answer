@@ -204,20 +204,23 @@ upload / create  →  document + version 1 (транзакция)
 { "error": { "code": "VALIDATION_ERROR", "message": "...", "retryable": false } }
 ```
 
-`retryable` выставляется для 5xx. Коды: `VALIDATION_ERROR`,
-`UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`,
-`EMAIL_ALREADY_EXISTS`, `INVALID_CREDENTIALS`, `RATE_LIMITED`,
-`INTERNAL_ERROR` и др.
+`retryable` выставляется для status ≥ 500. Машинные коды
+(`VALIDATION_ERROR`, `INVALID_CREDENTIALS`, `EMAIL_ALREADY_EXISTS`,
+`UNAUTHORIZED`, `FORBIDDEN`, `RATE_LIMITED`, `INTERNAL_ERROR`)
+используются на auth-эндпоинтах и origin-check; остальные хендлеры
+подставляют `http.StatusText` («Not Found», «Bad Request»…) в `code`.
 
 ### Доступность эндпоинтов
 
 - **Требуют сессию**: `PATCH /users/me`, `saved-instructions`,
   `action-routes*`, весь `/admin/*` (плюс `admin`/`expert` для admin).
-- **Открытые**: health, auth-эндпоинты, каталог документов,
-  conversations/messages, runs, search, `/api/ask`, список пользователей.
-  `currentUser` используется опционально — анонимные запросы
-  обрабатываются с пустым пользователем. Это осознанное состояние
-  прототипа; для продакшена каталог и диалоги стоит закрыть сессией.
+- **Открытые**: health, auth-эндпоинты, весь documents API
+  (чтение **и запись** — `POST/PUT/DELETE /documents` без проверки
+  сессии), conversations/messages, runs, search, `/api/ask`,
+  `/api/v1/users` и legacy `/api/users`. `currentUser` используется
+  опционально — анонимные запросы обрабатываются с пустым
+  пользователем. Это осознанное состояние прототипа; для продакшена
+  мутации документов/пользователей и диалоги стоит закрыть сессией.
 
 ## Поиск
 
