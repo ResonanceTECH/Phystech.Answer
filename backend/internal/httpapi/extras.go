@@ -96,6 +96,61 @@ func (s *Server) listSavedInstructions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, list)
 }
 
+func (s *Server) deleteSavedInstruction(w http.ResponseWriter, r *http.Request) {
+	u, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	if err := s.store.DeleteSavedInstruction(r.Context(), r.PathValue("id"), u.ID); errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "instruction not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete instruction")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /api/v1/answers/{id} — полный ответ (summary/steps/citations) для
+// карточки сохранённой инструкции. Доступ — владельцу диалога.
+func (s *Server) getAnswer(w http.ResponseWriter, r *http.Request) {
+	u, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	answer, err := s.store.GetAnswer(r.Context(), r.PathValue("id"))
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "answer not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load answer")
+		return
+	}
+	if answer.ConversationID != "" {
+		conv, err := s.store.GetConversation(r.Context(), answer.ConversationID)
+		if err == nil && conv.UserID != u.ID && u.Role != "admin" && u.Role != "expert" {
+			writeError(w, http.StatusNotFound, "answer not found")
+			return
+		}
+	}
+	_, steps, citations, err := s.store.GetAnswerByRun(r.Context(), answer.RunID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load answer details")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"answer_id":       answer.ID,
+		"conversation_id": answer.ConversationID,
+		"status":          answer.Status,
+		"summary":         answer.Summary,
+		"steps":           steps,
+		"sources":         citations,
+		"warnings":        answer.Warnings,
+		"missing_information": answer.MissingInformation,
+	})
+}
+
 // POST /api/v1/action-routes — интерактивный маршрут из ответа (§24).
 // Шаги можно передать явно или скопировать из ответа.
 func (s *Server) createActionRoute(w http.ResponseWriter, r *http.Request) {

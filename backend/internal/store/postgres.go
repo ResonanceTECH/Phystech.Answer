@@ -1327,6 +1327,17 @@ func (p *Postgres) CreateSavedInstruction(ctx context.Context, si model.SavedIns
 	return si, err
 }
 
+func (p *Postgres) DeleteSavedInstruction(ctx context.Context, id, userID string) error {
+	tag, err := p.pool.Exec(ctx, `DELETE FROM saved_instructions WHERE id=$1 AND user_id=$2`, id, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (p *Postgres) ListSavedInstructions(ctx context.Context, userID string) ([]model.SavedInstruction, error) {
 	rows, err := p.pool.Query(ctx, `SELECT id, user_id, answer_id, title, created_at
 		FROM saved_instructions WHERE user_id=$1 ORDER BY created_at DESC`, userID)
